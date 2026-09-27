@@ -1,0 +1,2138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SAR-1 // Ground Station</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root{
+    --bg-0:#0a0f0d;
+    --bg-1:#111a16;
+    --bg-2:#16211c;
+    --line:#26362f;
+    --amber:#ffb020;
+    --amber-dim:#8a6420;
+    --cyan:#5ee0c8;
+    --red:#ff4d4d;
+    --text-0:#eaf2ee;
+    --text-1:#8fa39a;
+    --text-2:#5a6b63;
+    --mono: 'JetBrains Mono', 'Courier New', monospace;
+    --sans: 'Space Grotesk', 'Segoe UI', sans-serif;
+  }
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{
+    background:var(--bg-0);
+    color:var(--text-0);
+    font-family:var(--sans);
+    height:100%;
+    overflow:hidden;
+  }
+  body{
+    background-image:
+      radial-gradient(circle at 15% 10%, rgba(94,224,200,0.05), transparent 40%),
+      radial-gradient(circle at 85% 90%, rgba(255,176,32,0.04), transparent 45%);
+  }
+
+  .topbar{
+    height:52px;
+    border-bottom:1px solid var(--line);
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:0 18px;
+    background:var(--bg-1);
+  }
+  .brand{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    font-family:var(--mono);
+    font-weight:700;
+    letter-spacing:1px;
+    font-size:14px;
+  }
+  .brand .dot{
+    width:8px;height:8px;border-radius:50%;
+    background:var(--text-2);
+    box-shadow:0 0 0 0 rgba(255,77,77,0.6);
+  }
+  .brand .dot.live{
+    background:var(--red);
+    animation:pulse-dot 1.4s infinite;
+  }
+  @keyframes pulse-dot{
+    0%{box-shadow:0 0 0 0 rgba(255,77,77,0.55);}
+    70%{box-shadow:0 0 0 8px rgba(255,77,77,0);}
+    100%{box-shadow:0 0 0 0 rgba(255,77,77,0);}
+  }
+  .brand .sub{color:var(--text-1); font-weight:500; font-size:11px; letter-spacing:2px;}
+  .topbar-right{display:flex; align-items:center; gap:22px; font-family:var(--mono); font-size:12px; color:var(--text-1);}
+  .clock{color:var(--cyan); font-weight:600;}
+  .conn-pill{
+    display:flex; align-items:center; gap:7px;
+    border:1px solid var(--line);
+    padding:5px 10px;
+    border-radius:3px;
+    background:var(--bg-2);
+    cursor:pointer;
+    font-size:11px;
+    letter-spacing:0.5px;
+  }
+  .conn-pill .dot{width:6px;height:6px;border-radius:50%; background:var(--text-2);}
+  .conn-pill.connected{border-color:var(--amber-dim);}
+  .conn-pill.connected .dot{background:var(--amber); box-shadow:0 0 6px var(--amber);}
+
+  .grid{
+    display:flex;
+    flex-direction:row;
+    height:calc(100% - 52px);
+    gap:1px;
+    background:var(--line);
+  }
+  .col-left{
+    flex:1;
+    min-width:0;
+    display:grid;
+    grid-template-rows: minmax(260px, 1fr) minmax(300px, 1fr);
+    gap:1px;
+  }
+  .col-right{
+    width:340px;
+    flex-shrink:0;
+    display:grid;
+    grid-template-rows: minmax(180px, 0.7fr) minmax(360px, 1.3fr);
+    gap:1px;
+  }
+  .panel{
+    background:var(--bg-1);
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+  }
+  .panel-head{
+    padding:9px 14px;
+    border-bottom:1px solid var(--line);
+    font-family:var(--mono);
+    font-size:10.5px;
+    letter-spacing:1.5px;
+    color:var(--text-1);
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    flex-shrink:0;
+  }
+  .panel-head .tag{color:var(--text-2);}
+
+  .video-wrap{
+    position:relative;
+    flex:1;
+    background:#050807;
+    overflow:hidden;
+  }
+  .video-feed{
+    width:100%; height:100%;
+    object-fit:cover;
+    display:block;
+  }
+  .noise-fallback{
+    position:absolute; inset:0;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:10px;
+    color:var(--text-2);
+    font-family:var(--mono);
+    font-size:12px;
+    letter-spacing:1px;
+    background:
+      repeating-linear-gradient(0deg, rgba(255,255,255,0.015) 0px, rgba(255,255,255,0.015) 1px, transparent 1px, transparent 3px);
+  }
+  .noise-fallback svg{opacity:0.35;}
+  .hud-corner{
+    position:absolute; width:22px; height:22px;
+    border-color:var(--amber);
+    opacity:0.7;
+  }
+  .hud-corner.tl{top:12px; left:12px; border-top:2px solid; border-left:2px solid;}
+  .hud-corner.tr{top:12px; right:12px; border-top:2px solid; border-right:2px solid;}
+  .hud-corner.bl{bottom:12px; left:12px; border-bottom:2px solid; border-left:2px solid;}
+  .hud-corner.br{bottom:12px; right:12px; border-bottom:2px solid; border-right:2px solid;}
+  .rec-badge{
+    position:absolute; top:14px; left:44px;
+    font-family:var(--mono); font-size:11px; letter-spacing:1px;
+    color:var(--red);
+    display:flex; align-items:center; gap:6px;
+  }
+  .rec-badge .dot{width:7px;height:7px;border-radius:50%; background:var(--red); animation:pulse-dot 1.2s infinite;}
+  .crosshair{
+    position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+    width:34px; height:34px; opacity:0.35;
+  }
+  .det-count{
+    position:absolute; bottom:14px; left:14px;
+    font-family:var(--mono); font-size:11px; color:var(--amber);
+    background:rgba(10,15,13,0.6); padding:4px 8px; border:1px solid var(--amber-dim); border-radius:2px;
+  }
+
+  .tele-panel{min-height:0;}
+  #three-canvas{ width:100%; flex:1; min-height:0; position:relative; overflow:hidden; }
+  #three-canvas canvas{ display:block; width:100% !important; height:100% !important; }
+  .attitude-readout{
+    display:grid;
+    grid-template-columns: repeat(3,1fr);
+    padding:10px 14px 14px;
+    gap:8px;
+    border-top:1px solid var(--line);
+  }
+  .stat{ text-align:center; }
+  .stat .v{font-family:var(--mono); font-size:16px; font-weight:600; color:var(--cyan);}
+  .stat .l{font-family:var(--mono); font-size:9px; color:var(--text-2); letter-spacing:1px; margin-top:2px;}
+
+  .metrics-panel{
+    padding:12px 14px;
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    gap:10px;
+    overflow-y:auto;
+  }
+  .metric-card{
+    background:var(--bg-2);
+    border:1px solid var(--line);
+    border-radius:3px;
+    padding:9px 10px;
+  }
+  .metric-card .l{font-family:var(--mono); font-size:9px; color:var(--text-2); letter-spacing:1px;}
+  .metric-card .v{font-family:var(--mono); font-size:19px; font-weight:600; margin-top:3px; color:var(--text-0);}
+  .metric-card .v.warn{color:var(--amber);}
+  .bar{height:3px; background:var(--line); border-radius:2px; margin-top:6px; overflow:hidden;}
+  .bar-fill{height:100%; background:var(--cyan); transition:width .4s;}
+  .bar-fill.batt{background:var(--amber);}
+
+  .map-panel{min-height:0;}
+  .map-body{flex:1; display:flex; flex-direction:row; overflow:hidden;}
+  .map-half{position:relative; flex:1; min-width:0;}
+  #map{filter: grayscale(0.15) brightness(0.9) contrast(1.05);}
+  .energy-half{
+    width:280px; flex-shrink:0;
+    border-left:1px solid var(--line);
+    background:var(--bg-1);
+    display:flex; flex-direction:column;
+    overflow-y:auto;
+  }
+  .energy-half-head{
+    padding:8px 14px 6px;
+    font-family:var(--mono); font-size:10px; letter-spacing:1.5px; color:var(--text-2);
+  }
+  .map-label{
+    position:absolute; top:10px; right:10px; z-index:400;
+    background:rgba(10,15,13,0.8); border:1px solid var(--line); border-radius:3px;
+    padding:6px 10px; font-family:var(--mono); font-size:11px; color:var(--text-0);
+    transition: border-color .3s, color .3s;
+  }
+  .map-label.unsafe{border-color:var(--red); color:var(--red);}
+  .set-home-btn{
+    font-family:var(--mono); font-size:9.5px; letter-spacing:0.5px; color:var(--text-1);
+    background:var(--bg-2); border:1px solid var(--line); border-radius:2px; padding:3px 8px; cursor:pointer;
+  }
+  .set-home-btn:hover{color:var(--amber); border-color:var(--amber-dim);}
+
+  .log-panel{min-height:0;}
+  .panel-scroll{flex:1; overflow-y:auto; display:flex; flex-direction:column;}
+  .log-list{padding:6px 0;}
+  .energy-banner{
+    margin:8px 14px 2px;
+    padding:9px 10px;
+    border-radius:3px;
+    font-family:var(--mono);
+    font-size:10.5px;
+    line-height:1.55;
+    border-left:3px solid var(--text-2);
+    background:var(--bg-2);
+    color:var(--text-1);
+  }
+  .energy-banner.safe{border-left-color:var(--cyan); color:var(--text-0);}
+  .energy-banner.unsafe{
+    border-left-color:var(--red); color:var(--text-0); background:rgba(255,77,77,0.08);
+    animation:pulse-banner 1.6s infinite;
+  }
+  @keyframes pulse-banner{
+    0%{background:rgba(255,77,77,0.08);} 50%{background:rgba(255,77,77,0.16);} 100%{background:rgba(255,77,77,0.08);}
+  }
+  .energy-banner .verdict{font-weight:700; color:var(--red); margin-top:5px; display:block;}
+  .energy-banner.safe .verdict{color:var(--cyan);}
+  .log-empty{
+    height:100%; display:flex; align-items:center; justify-content:center;
+    color:var(--text-2); font-family:var(--mono); font-size:11px; letter-spacing:0.5px; text-align:center; padding:0 20px;
+  }
+  .log-row{
+    padding:8px 14px;
+    border-bottom:1px solid var(--line);
+    display:flex; justify-content:space-between; align-items:center;
+    font-family:var(--mono); font-size:11px;
+    animation: slidein .3s ease;
+  }
+  @keyframes slidein{from{opacity:0; transform:translateX(6px);} to{opacity:1; transform:translateX(0);}}
+  .log-row .id{color:var(--red); font-weight:700;}
+  .log-row .meta{color:var(--text-1); font-size:10px;}
+  .demo-btn{
+    margin:10px 14px;
+    padding:9px;
+    background:transparent;
+    border:1px dashed var(--amber-dim);
+    color:var(--amber);
+    font-family:var(--mono);
+    font-size:10.5px;
+    letter-spacing:1px;
+    border-radius:3px;
+    cursor:pointer;
+    text-align:center;
+  }
+  .demo-btn:hover{background:rgba(255,176,32,0.06); border-color:var(--amber);}
+
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(5,8,7,0.75);
+    display:flex; align-items:center; justify-content:center;
+    z-index:50; backdrop-filter: blur(2px);
+  }
+  .modal-overlay.hidden{display:none;}
+  .modal{
+    width:420px; background:var(--bg-1); border:1px solid var(--line); border-radius:6px;
+    padding:22px;
+  }
+  .modal h3{font-family:var(--mono); font-size:13px; letter-spacing:1px; color:var(--text-0); margin-bottom:4px;}
+  .modal p{font-family:var(--sans); font-size:12px; color:var(--text-1); margin-bottom:16px; line-height:1.5;}
+  .modal label{display:block; font-family:var(--mono); font-size:10px; color:var(--text-2); letter-spacing:1px; margin-bottom:5px; margin-top:12px;}
+  .modal input{
+    width:100%; background:var(--bg-2); border:1px solid var(--line); color:var(--text-0);
+    padding:9px 10px; border-radius:3px; font-family:var(--mono); font-size:12px;
+  }
+  .modal input:focus{outline:none; border-color:var(--cyan);}
+  .modal-actions{display:flex; gap:10px; margin-top:20px;}
+  .btn{
+    flex:1; padding:10px; border-radius:3px; font-family:var(--mono); font-size:11px; letter-spacing:1px;
+    cursor:pointer; border:1px solid var(--line); background:var(--bg-2); color:var(--text-1);
+  }
+  .btn.primary{background:var(--amber); color:#1a1204; border-color:var(--amber); font-weight:700;}
+  .btn:hover{opacity:0.9;}
+  .modal .hint{font-family:var(--mono); font-size:10px; color:var(--text-2); margin-top:14px; line-height:1.6; border-top:1px solid var(--line); padding-top:12px;}
+  .modal .hint code{color:var(--cyan);}
+
+  /* ---------- Multimodal sensor fusion additions ---------- */
+  .sensor-strip{
+    display:flex; gap:6px; padding:10px 14px 0;
+  }
+  .sensor-chip{
+    flex:1; display:flex; flex-direction:column; align-items:center; gap:4px;
+    background:var(--bg-2); border:1px solid var(--line); border-radius:3px;
+    padding:7px 4px; font-family:var(--mono);
+  }
+  .sensor-chip .ic{font-size:14px; line-height:1;}
+  .sensor-chip .lb{font-size:8.5px; letter-spacing:1px; color:var(--text-2);}
+  .sensor-chip .dotwrap{display:flex; align-items:center; gap:4px;}
+  .sensor-chip .sdot{width:6px; height:6px; border-radius:50%; background:var(--text-2);}
+  .sensor-chip.active{border-color:var(--amber-dim);}
+  .sensor-chip.active .sdot{background:var(--amber); box-shadow:0 0 6px var(--amber); animation:pulse-dot 1.4s infinite;}
+  .sensor-chip .st{font-size:8px; color:var(--text-2);}
+  .sensor-chip.active .st{color:var(--amber);}
+
+  .mini-panel{
+    margin:10px 14px 0; background:var(--bg-2); border:1px solid var(--line); border-radius:3px; padding:8px 10px;
+  }
+  .mini-panel .mp-head{
+    display:flex; justify-content:space-between; align-items:center;
+    font-family:var(--mono); font-size:9px; letter-spacing:1px; color:var(--text-2); margin-bottom:6px;
+  }
+  .mini-panel .mp-head .live-val{color:var(--cyan); font-weight:600;}
+  .audio-meter{ display:flex; align-items:flex-end; gap:2px; height:22px; }
+  .audio-meter .bar-seg{ flex:1; background:var(--line); border-radius:1px; transition:height .15s, background .15s; }
+  .audio-meter .bar-seg.hot{ background:var(--amber); }
+  .audio-meter .bar-seg.voice{ background:var(--red); }
+  .audio-status{font-family:var(--mono); font-size:9.5px; color:var(--text-1); margin-top:6px;}
+  .audio-status.alert{color:var(--red); font-weight:700;}
+
+  .wifi-list{ max-height:64px; overflow-y:auto; }
+  .wifi-row{
+    display:flex; justify-content:space-between; font-family:var(--mono); font-size:9.5px;
+    color:var(--text-1); padding:2px 0; border-bottom:1px dashed var(--line);
+  }
+  .wifi-row:last-child{border-bottom:none;}
+  .wifi-row .sig{color:var(--cyan);}
+  .wifi-empty{font-family:var(--mono); font-size:9.5px; color:var(--text-2); text-align:center; padding:4px 0;}
+
+  .src-badges{display:flex; gap:3px; margin-top:3px;}
+  .src-badge{
+    font-family:var(--mono); font-size:8px; letter-spacing:0.5px; padding:1px 4px; border-radius:2px;
+    border:1px solid var(--line); color:var(--text-1);
+  }
+  .src-badge.cam{border-color:#3a6b5c; color:var(--cyan);}
+  .src-badge.audio{border-color:#8a5a1a; color:var(--amber);}
+  .src-badge.wifi{border-color:#6a3a3a; color:#ff8f8f;}
+
+  .prio-pill{
+    font-family:var(--mono); font-size:8.5px; font-weight:700; letter-spacing:1px;
+    padding:2px 6px; border-radius:2px; margin-left:6px;
+  }
+  .prio-pill.high{background:rgba(255,77,77,0.15); color:var(--red); border:1px solid var(--red);}
+  .prio-pill.med{background:rgba(255,176,32,0.15); color:var(--amber); border:1px solid var(--amber-dim);}
+  .prio-pill.low{background:rgba(94,224,200,0.12); color:var(--cyan); border:1px solid #3a6b5c;}
+
+  .fusion-line{font-family:var(--mono); font-size:9.5px; color:var(--text-2); margin-top:4px;}
+  .log-row{ flex-direction:column; align-items:flex-start; gap:2px; }
+  .log-row-top{ width:100%; display:flex; justify-content:space-between; align-items:center; }
+
+  /* ---------- Phase 2: Jetson edge-AI / offline-resilience / hazard routing additions ---------- */
+  .edge-pill{
+    display:flex; align-items:center; gap:7px;
+    border:1px solid #3a6b5c;
+    padding:5px 10px;
+    border-radius:3px;
+    background:var(--bg-2);
+    font-size:11px;
+    letter-spacing:0.5px;
+    color:var(--cyan);
+  }
+  .edge-pill .dot{width:6px;height:6px;border-radius:50%; background:var(--cyan); box-shadow:0 0 6px var(--cyan);}
+
+  .cloud-pill{
+    display:flex; align-items:center; gap:7px;
+    border:1px solid var(--line);
+    padding:5px 10px;
+    border-radius:3px;
+    background:var(--bg-2);
+    cursor:pointer;
+    font-size:11px;
+    letter-spacing:0.5px;
+    color:var(--text-1);
+  }
+  .cloud-pill .dot{width:6px;height:6px;border-radius:50%; background:var(--text-2);}
+  .cloud-pill.synced{border-color:var(--amber-dim);}
+  .cloud-pill.synced .dot{background:var(--amber); box-shadow:0 0 6px var(--amber);}
+  .cloud-pill.offline{border-color:#3a6b5c; color:var(--cyan);}
+  .cloud-pill.offline .dot{background:var(--cyan); box-shadow:0 0 6px var(--cyan);}
+
+  .offline-banner{
+    margin:8px 14px 2px;
+    padding:8px 10px;
+    border-radius:3px;
+    font-family:var(--mono);
+    font-size:10px;
+    line-height:1.5;
+    border-left:3px solid var(--cyan);
+    background:rgba(94,224,200,0.08);
+    color:var(--text-0);
+    display:none;
+  }
+  .offline-banner.show{display:block;}
+
+  .hazard-list{ padding:2px 0; }
+  .hazard-row{
+    padding:7px 14px;
+    border-bottom:1px solid var(--line);
+    display:flex; justify-content:space-between; align-items:center;
+    font-family:var(--mono); font-size:10.5px;
+    animation: slidein .3s ease;
+  }
+  .hazard-row .htype{font-weight:700;}
+  .hazard-row .hmeta{color:var(--text-1); font-size:9.5px;}
+  .hazard-empty{
+    font-family:var(--mono); font-size:10px; color:var(--text-2); text-align:center; padding:10px 20px;
+  }
+
+  .map-legend{
+    position:absolute; bottom:10px; left:10px; z-index:400;
+    background:rgba(10,15,13,0.82); border:1px solid var(--line); border-radius:3px;
+    padding:7px 9px; font-family:var(--mono); font-size:9px; color:var(--text-1);
+    display:flex; flex-direction:column; gap:4px;
+  }
+  .map-legend .lg-row{display:flex; align-items:center; gap:6px;}
+  .map-legend .sw{width:10px; height:2px; flex-shrink:0;}
+  .map-legend .sw.dot{width:8px;height:8px;border-radius:50%;}
+
+  /* ================= TAB BAR ================= */
+  .tabbar{
+    height:38px; display:flex; align-items:stretch; gap:0;
+    background:var(--bg-1); border-bottom:1px solid var(--line);
+    padding:0 14px;
+  }
+  .tab-btn{
+    background:transparent; border:none; color:var(--text-2);
+    font-family:var(--mono); font-size:11px; letter-spacing:1.2px;
+    padding:0 16px; cursor:pointer; position:relative;
+    border-bottom:2px solid transparent;
+  }
+  .tab-btn:hover{color:var(--text-0);}
+  .tab-btn.active{color:var(--amber); border-bottom-color:var(--amber);}
+  .tab-btn .n{
+    display:inline-flex; align-items:center; justify-content:center;
+    min-width:14px; height:14px; border-radius:7px; background:var(--red); color:#fff;
+    font-size:8.5px; font-weight:700; margin-left:6px; padding:0 3px;
+  }
+
+  /* ================= SYSTEM & CLOUD VIEW ================= */
+  .sys-view{ height:calc(100% - 52px - 38px); overflow-y:auto; background:var(--bg-0); }
+  .sys-scroll{ max-width:1600px; width:100%; margin:0 auto; padding:18px 24px 60px; display:flex; flex-direction:column; gap:18px; }
+  .sys-section{ background:var(--bg-1); border:1px solid var(--line); border-radius:6px; overflow:hidden; }
+  .sys-section-head{
+    background:linear-gradient(90deg, #2a1f45, #1c1030);
+    color:#d9c7ff; font-family:var(--mono); font-size:11px; letter-spacing:1.5px;
+    padding:10px 16px; border-bottom:1px solid var(--line);
+  }
+  .sys-section-body{ padding:16px; }
+
+  .sys-flow-row{ display:flex; align-items:stretch; gap:14px; }
+  .flow-card{
+    flex:1; background:var(--bg-2); border:1px solid var(--line); border-radius:5px; padding:12px 14px;
+  }
+  .flow-card-title{ font-family:var(--mono); font-size:10px; letter-spacing:1px; color:var(--cyan); margin-bottom:8px; display:flex; align-items:center; gap:6px;}
+  .flow-card.downlink .flow-card-title{color:var(--amber);}
+  .flow-card ul{ list-style:none; display:flex; flex-direction:column; gap:5px; }
+  .flow-card li{ font-family:var(--mono); font-size:10.5px; color:var(--text-1); display:flex; align-items:center; gap:7px; }
+  .flow-card li::before{content:'▸'; color:var(--text-2);}
+  .flow-tower{
+    flex:0 0 140px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px;
+    font-family:var(--mono); font-size:10px; letter-spacing:0.5px; color:var(--text-1); text-align:center;
+    position:relative;
+  }
+  .flow-tower .ic{font-size:30px; animation:tower-pulse 2s infinite;}
+  @keyframes tower-pulse{0%,100%{opacity:0.7; transform:scale(1);} 50%{opacity:1; transform:scale(1.08);}}
+  .flow-tower .arrow-up, .flow-tower .arrow-down{position:absolute; font-size:14px; color:var(--cyan);}
+  .flow-tower .arrow-up{top:2px; animation:float-up 1.6s infinite;}
+  .flow-tower .arrow-down{bottom:2px; color:var(--amber); animation:float-down 1.6s infinite;}
+  @keyframes float-up{0%{transform:translateY(4px); opacity:0;} 50%{opacity:1;} 100%{transform:translateY(-6px); opacity:0;}}
+  @keyframes float-down{0%{transform:translateY(-4px); opacity:0;} 50%{opacity:1;} 100%{transform:translateY(6px); opacity:0;}}
+
+  .ms-grid{ display:grid; grid-template-columns:repeat(6,1fr); gap:10px; }
+  @media (max-width:1000px){ .ms-grid{grid-template-columns:repeat(3,1fr);} }
+  .ms-card{
+    background:var(--bg-2); border:1px solid var(--line); border-radius:5px; padding:12px 8px;
+    display:flex; flex-direction:column; align-items:center; gap:6px; text-align:center;
+    transition:border-color .3s;
+  }
+  .ms-card.online{border-color:#3a6b5c;}
+  .ms-card .ic{font-size:19px;}
+  .ms-card .nm{font-family:var(--mono); font-size:9px; letter-spacing:0.5px; color:var(--text-1); line-height:1.35; min-height:24px;}
+  .ms-card .stat-row{display:flex; align-items:center; gap:5px; font-family:var(--mono); font-size:9px;}
+  .ms-card .sdot{width:6px;height:6px;border-radius:50%; background:var(--text-2);}
+  .ms-card.online .sdot{background:var(--cyan); box-shadow:0 0 5px var(--cyan); animation:pulse-dot 1.8s infinite;}
+  .ms-card.online .stat-txt{color:var(--cyan);}
+  .ms-card .lat{color:var(--text-2); font-size:8.5px;}
+
+  .arch-flow{
+    display:flex; align-items:center; justify-content:space-between; gap:6px; flex-wrap:wrap;
+    padding:6px 0;
+  }
+  .arch-node{
+    flex:1; min-width:110px; background:var(--bg-2); border:1px solid var(--line); border-radius:6px;
+    padding:14px 8px; text-align:center; font-family:var(--mono); font-size:9.5px; color:var(--text-1);
+    letter-spacing:0.5px; display:flex; flex-direction:column; align-items:center; gap:6px;
+  }
+  .arch-node .ic{font-size:22px;}
+  .arch-node.highlight{border-color:var(--amber-dim); color:var(--text-0);}
+  .arch-arrow{ color:var(--text-2); font-size:16px; flex:0 0 20px; text-align:center; }
+  .arch-return{
+    margin-top:10px; padding:8px 12px; border-top:1px dashed var(--line);
+    font-family:var(--mono); font-size:9.5px; color:var(--amber); text-align:center; letter-spacing:0.5px;
+  }
+
+  .support-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
+  @media (max-width:1100px){ .support-grid{grid-template-columns:repeat(2,1fr);} }
+  .supp-card{ background:var(--bg-2); border:1px solid var(--line); border-radius:5px; padding:12px 14px; display:flex; flex-direction:column; gap:8px; min-height:150px; }
+
+  /* GEO-TAGGED MAPPING (sys-view) section */
+  .geo-intro{ font-family:var(--mono); font-size:10.5px; color:var(--text-1); line-height:1.6; margin-bottom:14px; max-width:900px; }
+  .geo-stat-row{ display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:16px; }
+  @media (max-width:1000px){ .geo-stat-row{grid-template-columns:repeat(2,1fr);} }
+  .geo-stat-card{ background:var(--bg-2); border:1px solid var(--line); border-radius:5px; padding:10px 12px; display:flex; flex-direction:column; gap:4px; }
+  .geo-stat-card .l{ font-family:var(--mono); font-size:8.5px; letter-spacing:0.8px; color:var(--text-2); }
+  .geo-stat-card .v{ font-family:var(--mono); font-size:18px; font-weight:700; color:var(--cyan); }
+  .geo-layer-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:16px; }
+  @media (max-width:1000px){ .geo-layer-grid{grid-template-columns:repeat(2,1fr);} }
+  .geo-layer-card{
+    background:var(--bg-2); border:1px solid var(--line); border-radius:5px; padding:11px 12px;
+    display:flex; flex-direction:column; gap:7px; cursor:pointer; transition:border-color .15s;
+  }
+  .geo-layer-card:hover{ border-color:var(--amber-dim); }
+  .geo-layer-card .glc-top{ display:flex; align-items:center; justify-content:space-between; }
+  .geo-layer-card .glc-name{ font-family:var(--mono); font-size:10px; letter-spacing:0.5px; color:var(--text-0); display:flex; align-items:center; gap:6px; }
+  .geo-layer-card .glc-sw{ width:10px; height:10px; border-radius:3px; border:1px solid var(--line); flex-shrink:0; }
+  .geo-layer-card.on .glc-sw{ box-shadow:0 0 6px currentColor; }
+  .geo-layer-card .glc-state{ font-family:var(--mono); font-size:8px; letter-spacing:1px; padding:2px 6px; border-radius:8px; border:1px solid var(--line); color:var(--text-2); }
+  .geo-layer-card.on .glc-state{ color:#0a0f0d; font-weight:700; background:var(--cyan); border-color:var(--cyan); }
+  .geo-layer-card .glc-desc{ font-family:var(--mono); font-size:8.5px; color:var(--text-2); line-height:1.4; }
+  .geo-legend-row{ display:flex; flex-wrap:wrap; gap:14px; padding-top:10px; border-top:1px dashed var(--line); }
+  .geo-legend-row .lg-row{ display:flex; align-items:center; gap:6px; font-family:var(--mono); font-size:9.5px; color:var(--text-1); }
+  .geo-legend-row .sw{ width:10px; height:2px; flex-shrink:0; }
+  .geo-legend-row .sw.dot{ width:8px; height:8px; border-radius:50%; }
+  .supp-title{ font-family:var(--mono); font-size:10px; letter-spacing:1px; color:var(--text-1); display:flex; align-items:center; gap:6px; justify-content:space-between;}
+  .weather-main{ display:flex; align-items:center; gap:10px; }
+  .weather-main .wic{font-size:30px;}
+  .weather-main .wtemp{font-family:var(--mono); font-size:22px; color:var(--text-0); font-weight:600;}
+  .weather-sub{ font-family:var(--mono); font-size:9.5px; color:var(--text-2); display:flex; flex-direction:column; gap:3px; }
+  .weather-verdict{ margin-top:auto; font-family:var(--mono); font-size:9.5px; padding:6px 8px; border-radius:3px; border-left:3px solid var(--cyan); background:rgba(94,224,200,0.08); color:var(--text-0); }
+  .weather-verdict.bad{ border-left-color:var(--red); background:rgba(255,77,77,0.08); }
+
+  .backup-ring{ display:flex; align-items:center; gap:12px; }
+  .backup-pct{ font-family:var(--mono); font-size:24px; color:var(--cyan); font-weight:700; }
+  .backup-detail{ font-family:var(--mono); font-size:9px; color:var(--text-2); display:flex; flex-direction:column; gap:3px; }
+  .backup-list{ font-family:var(--mono); font-size:9px; color:var(--text-1); margin-top:auto; }
+
+  .export-btn{
+    margin-top:auto; padding:8px; background:transparent; border:1px dashed var(--amber-dim); color:var(--amber);
+    font-family:var(--mono); font-size:9.5px; letter-spacing:0.8px; border-radius:3px; cursor:pointer; text-align:center;
+  }
+  .export-btn:hover{ background:rgba(255,176,32,0.06); border-color:var(--amber); }
+  .report-stat-row{display:flex; justify-content:space-between; font-family:var(--mono); font-size:9.5px; color:var(--text-1); border-bottom:1px dashed var(--line); padding:3px 0;}
+
+  .notif-list{ flex:1; overflow-y:auto; max-height:96px; display:flex; flex-direction:column; gap:6px; }
+  .notif-row{ font-family:var(--mono); font-size:9px; color:var(--text-1); display:flex; gap:6px; align-items:flex-start; }
+  .notif-row .ch{ flex-shrink:0; padding:1px 4px; border-radius:2px; font-size:8px; border:1px solid var(--line); }
+  .notif-empty{ font-family:var(--mono); font-size:9.5px; color:var(--text-2); text-align:center; padding:10px 0; }
+
+  /* map layer toggle chips */
+  .layer-toggle-row{ position:absolute; top:10px; left:10px; z-index:400; display:flex; gap:5px; flex-wrap:wrap; max-width:70%; }
+  .layer-chip{
+    font-family:var(--mono); font-size:8.5px; letter-spacing:0.4px; padding:4px 7px; border-radius:10px;
+    background:rgba(10,15,13,0.82); border:1px solid var(--line); color:var(--text-2); cursor:pointer;
+  }
+  .layer-chip.on{ color:#0a0f0d; font-weight:700; }
+  .layer-chip[data-layer="quake"].on{ background:#ff8a3c; border-color:#ff8a3c; }
+  .layer-chip[data-layer="debris"].on{ background:#c98a3c; border-color:#c98a3c; }
+  .layer-chip[data-layer="flood"].on{ background:#3aa0ff; border-color:#3aa0ff; }
+  .layer-chip[data-layer="coverage"].on{ background:#5ee0c8; border-color:#5ee0c8; }
+
+  /* SLAM toggle on 3D panel */
+  .view-toggle{ display:flex; gap:0; font-family:var(--mono); font-size:9px; }
+  .view-toggle button{
+    background:var(--bg-2); border:1px solid var(--line); color:var(--text-2); padding:3px 8px; cursor:pointer;
+  }
+  .view-toggle button:first-child{border-radius:3px 0 0 3px;}
+  .view-toggle button:last-child{border-radius:0 3px 3px 0; border-left:none;}
+  .view-toggle button.on{ color:var(--amber); border-color:var(--amber-dim); }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <div class="dot" id="brandDot"></div>
+    <span>SAR-1 GROUND STATION</span>
+    <span class="sub">DISASTER RESPONSE UNIT · PHASE 2</span>
+  </div>
+  <div class="topbar-right">
+    <div class="edge-pill">
+      <div class="dot"></div>
+      <span>JETSON ORIN NANO · ON-DEVICE AI</span>
+    </div>
+    <div class="cloud-pill" id="cloudPill" onclick="toggleCloudSync()">
+      <div class="dot"></div>
+      <span id="cloudLabel">CLOUD SYNCED</span>
+    </div>
+    <span class="clock" id="clock">00:00:00</span>
+    <div class="conn-pill" id="connPill" onclick="openModal()">
+      <div class="dot"></div>
+      <span id="connLabel">NOT CONNECTED — CLICK TO LINK</span>
+    </div>
+  </div>
+</div>
+
+<div class="tabbar">
+  <button class="tab-btn active" id="tabBtnLive" onclick="switchView('live')">▣ LIVE OPS</button>
+  <button class="tab-btn" id="tabBtnSystem" onclick="switchView('system')">☁ SYSTEM &amp; CLOUD<span class="n" id="notifBadge" style="display:none;">0</span></button>
+</div>
+
+<div class="grid" id="liveOpsView">
+ <div class="col-left">
+  <div class="panel video-panel">
+    <div class="panel-head"><span>LIVE FEED — CAM 01</span><span class="tag" id="feedTag">CAM 01 · LOCAL VIDEO</span></div>
+    <div class="video-wrap" id="videoWrap">
+      <video class="video-feed" id="videoImg" autoplay muted loop playsinline preload="auto">
+        <source src="CAM01.mp4" type="video/mp4">
+      </video>
+      <div class="noise-fallback" id="fallback" style="display:none;">
+        <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
+          <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+        </svg>
+        <div>AWAITING VIDEO SOURCE</div>
+        <div style="font-size:10px; opacity:0.7;">connect Pi stream via link panel</div>
+      </div>
+      <div class="rec-badge"><div class="dot"></div>REC</div>
+      <div class="hud-corner tl"></div>
+      <div class="hud-corner tr"></div>
+      <div class="hud-corner bl"></div>
+      <div class="hud-corner br"></div>
+      <svg class="crosshair" viewBox="0 0 34 34"><g stroke="var(--amber)" stroke-width="1"><line x1="17" y1="0" x2="17" y2="10"/><line x1="17" y1="24" x2="17" y2="34"/><line x1="0" y1="17" x2="10" y2="17"/><line x1="24" y1="17" x2="34" y2="17"/><circle cx="17" cy="17" r="6" fill="none"/></g></svg>
+      <div class="det-count" id="detCount">HUMANS DETECTED: 0</div>
+    </div>
+  </div>
+
+  <!-- MAP_PANEL_MARKER -->
+  <div class="panel map-panel">
+    <div class="panel-head">
+      <span>POSITION / HAZARD-AWARE SAFE ROUTE</span>
+      <span style="display:flex; align-items:center; gap:10px;">
+        <span class="tag" id="gpsTag">--</span>
+        <span class="set-home-btn" onclick="setHomeHere()">SET HOME HERE</span>
+        <span class="set-home-btn" onclick="triggerDemoHazard()">▸ SIMULATE HAZARD</span>
+      </span>
+    </div>
+    <div class="map-body">
+      <div class="map-half">
+        <div id="map" style="position:absolute; inset:0;"></div>
+        <div class="layer-toggle-row" id="layerToggleRow">
+          <span class="layer-chip on" data-layer="coverage" onclick="toggleMapLayer('coverage')">▦ COVERAGE</span>
+          <span class="layer-chip" data-layer="quake" onclick="toggleMapLayer('quake')">🏚 EARTHQUAKE ZONES</span>
+          <span class="layer-chip" data-layer="debris" onclick="toggleMapLayer('debris')">🧱 DEBRIS/DAMAGE</span>
+          <span class="layer-chip" data-layer="flood" onclick="toggleMapLayer('flood')">🌊 FLOOD INUNDATION</span>
+        </div>
+        <div class="map-label" id="mapDistLabel">HOME NOT SET</div>
+        <div class="map-legend">
+          <div class="lg-row"><span class="sw dot" style="background:#ffb020;"></span>DRONE</div>
+          <div class="lg-row"><span class="sw dot" style="background:#5ee0c8;"></span>HOME</div>
+          <div class="lg-row"><span class="sw dot" style="background:#ff4d4d;"></span>VICTIM (HIGH PRIO)</div>
+          <div class="lg-row"><span class="sw dot" style="background:#e24b4a;"></span>HAZARD ZONE</div>
+          <div class="lg-row"><span class="sw" style="background:#5ee0c8; height:2px;"></span>SAFE ROUTE (AVOIDS HAZARDS)</div>
+        </div>
+      </div>
+      <div class="energy-half">
+        <div class="energy-half-head">BATTERY / RTL OPTIMIZATION</div>
+        <div class="metrics-panel">
+          <div class="metric-card">
+            <div class="l">DIST → HOME</div>
+            <div class="v" id="distHomeV">-- km</div>
+          </div>
+          <div class="metric-card">
+            <div class="l">ENERGY NEEDED</div>
+            <div class="v" id="energyNeedV">-- %</div>
+          </div>
+          <div class="metric-card" style="grid-column:1/3;">
+            <div class="l">EST. TIME TO HOME</div>
+            <div class="v" id="timeHomeV">-- min</div>
+          </div>
+        </div>
+        <div class="energy-banner" id="rtlBanner">
+          HOME position not set yet — connect / simulate to begin RTL monitoring.
+        </div>
+        <button class="demo-btn" id="drainBtn" onclick="simulateLowBattery()" style="border-color:var(--amber-dim);">▸ SIMULATE LOW BATTERY (RTL TEST)</button>
+      </div>
+    </div>
+  </div>
+ </div>
+ <div class="col-right">
+  <div class="panel tele-panel">
+    <div class="panel-head">
+      <span id="tele3dLabel">ATTITUDE / IMU</span>
+      <span class="view-toggle">
+        <button class="on" id="btnViewAttitude" onclick="set3DView('attitude')">ATTITUDE</button>
+        <button id="btnViewSlam" onclick="set3DView('slam')">SLAM MAP</button>
+      </span>
+    </div>
+    <div id="three-canvas"></div>
+    <div class="attitude-readout">
+      <div class="stat"><div class="v" id="pitchV">0.0°</div><div class="l">PITCH</div></div>
+      <div class="stat"><div class="v" id="rollV">0.0°</div><div class="l">ROLL</div></div>
+      <div class="stat"><div class="v" id="yawV">0.0°</div><div class="l">YAW</div></div>
+    </div>
+  </div>
+
+  <div class="panel log-panel">
+    <div class="panel-head"><span>TELEMETRY + VICTIM &amp; HAZARD LOG</span><span class="tag" id="sigTag">SIG --</span></div>
+    <div class="panel-scroll">
+      <div class="sensor-strip" id="sensorStrip">
+        <div class="sensor-chip" id="chipCam">
+          <span class="ic">🎥</span>
+          <div class="dotwrap"><span class="sdot"></span><span class="lb">CAM</span></div>
+          <span class="st" id="chipCamSt">IDLE</span>
+        </div>
+        <div class="sensor-chip" id="chipAudio">
+          <span class="ic">🔊</span>
+          <div class="dotwrap"><span class="sdot"></span><span class="lb">AUDIO</span></div>
+          <span class="st" id="chipAudioSt">IDLE</span>
+        </div>
+        <div class="sensor-chip" id="chipWifi">
+          <span class="ic">📶</span>
+          <div class="dotwrap"><span class="sdot"></span><span class="lb">WiFi/BLE</span></div>
+          <span class="st" id="chipWifiSt">IDLE</span>
+        </div>
+        <div class="sensor-chip active" id="chipLidar">
+          <span class="ic">📡</span>
+          <div class="dotwrap"><span class="sdot"></span><span class="lb">LiDAR</span></div>
+          <span class="st" id="chipLidarSt">SLAM</span>
+        </div>
+      </div>
+      <div class="offline-banner" id="offlineBanner">
+        ⚠ LINK LOST — cloud sync unavailable.<br>Detection, SLAM &amp; priority scoring continue locally on Jetson Orin Nano (edge AI). Buffered data will sync when connectivity returns.
+      </div>
+
+      <div class="metrics-panel">
+        <div class="metric-card">
+          <div class="l">ALTITUDE</div>
+          <div class="v" id="altV">-- m</div>
+        </div>
+        <div class="metric-card">
+          <div class="l">SPEED</div>
+          <div class="v" id="spdV">-- m/s</div>
+        </div>
+        <div class="metric-card" style="grid-column:1/3;">
+          <div class="l">BATTERY</div>
+          <div class="v" id="battV">-- %</div>
+          <div class="bar"><div class="bar-fill batt" id="battBar" style="width:0%;"></div></div>
+        </div>
+      </div>
+
+      <div class="mini-panel">
+        <div class="mp-head"><span>ACOUSTIC DETECTION</span><span class="live-val" id="audioLevelV">-- dB</span></div>
+        <div class="audio-meter" id="audioMeter"></div>
+        <div class="audio-status" id="audioStatus">No acoustic activity.</div>
+      </div>
+
+      <div class="mini-panel">
+        <div class="mp-head"><span>Wi-Fi / BLE SCAN</span><span class="live-val" id="wifiCountV">0 devices</span></div>
+        <div class="wifi-list" id="wifiList">
+          <div class="wifi-empty">No nearby devices detected.</div>
+        </div>
+      </div>
+
+      <div class="mini-panel">
+        <div class="mp-head"><span>HAZARD CLASSIFICATION</span><span class="live-val" id="hazardCountV">0 active</span></div>
+        <div class="hazard-list" id="hazardList">
+          <div class="hazard-empty">No hazards classified yet.<br>Fire, flood, debris, live wire &amp; landslide zones will appear here.</div>
+        </div>
+      </div>
+
+      <button class="demo-btn" id="demoBtn" onclick="triggerDemoDetection()">▸ SIMULATE MULTIMODAL DETECTION</button>
+      <div class="log-list" id="logList">
+        <div class="log-empty">No victims marked yet.<br>Fused detections will appear here with GPS coordinates.</div>
+      </div>
+    </div>
+  </div>
+ </div>
+</div>
+
+<div class="sys-view" id="systemView" style="display:none;">
+  <div class="sys-scroll">
+
+    <div class="sys-section">
+      <div class="sys-section-head">1 · TELEMETRY LINK (DRONE ↔ CLOUD)</div>
+      <div class="sys-section-body">
+        <div class="sys-flow-row">
+          <div class="flow-card uplink">
+            <div class="flow-card-title">↑ UPLINK — DRONE → CLOUD</div>
+            <ul>
+              <li>JSON Telemetry Data</li>
+              <li>Detection &amp; Hazard Events</li>
+              <li>Flight Logs</li>
+              <li>Media (Images / Video)</li>
+              <li>System Status</li>
+            </ul>
+          </div>
+          <div class="flow-tower">
+            <span class="arrow-up">▲</span>
+            <span class="ic">📡</span>
+            <span>4G / Wi-Fi /<br>MAVLink</span>
+            <span class="arrow-down">▼</span>
+          </div>
+          <div class="flow-card downlink">
+            <div class="flow-card-title">↓ DOWNLINK — CLOUD → DRONE</div>
+            <ul>
+              <li>Control Commands</li>
+              <li>Configurations</li>
+              <li>Mission Updates</li>
+              <li>Parameter Changes</li>
+              <li>Return-to-Home / Payload Cmds</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sys-section">
+      <div class="sys-section-head">2 · CLOUD / SERVER MICROSERVICES</div>
+      <div class="sys-section-body">
+        <div class="ms-grid" id="msGrid"></div>
+      </div>
+    </div>
+
+    <div class="sys-section">
+      <div class="sys-section-head">3 · GEO-TAGGED MAPPING &amp; HAZARD LAYERS</div>
+      <div class="sys-section-body">
+        <div class="geo-intro">
+          Live disaster map builds a geo-tagged overlay of every survivor detection and classified hazard as the drone scans the AO (area of operations).
+          Layers below are toggle-able on the LIVE OPS map in real time — click any card here or the chips on the map panel; both stay in sync.
+        </div>
+
+        <div class="geo-stat-row">
+          <div class="geo-stat-card">
+            <span class="l">SURVIVORS GEO-TAGGED</span>
+            <span class="v" id="geoVictimStatV">0</span>
+          </div>
+          <div class="geo-stat-card">
+            <span class="l">HAZARD ZONES MAPPED</span>
+            <span class="v" id="geoHazardStatV">0</span>
+          </div>
+          <div class="geo-stat-card">
+            <span class="l">ACTIVE MAP LAYERS</span>
+            <span class="v" id="geoLayersActiveV">1 / 4</span>
+          </div>
+          <div class="geo-stat-card">
+            <span class="l">LAST GEO-SYNC</span>
+            <span class="v" id="geoLastSyncV" style="font-size:13px;">--:--:--</span>
+          </div>
+        </div>
+
+        <div class="geo-layer-grid" id="geoLayerGrid">
+          <div class="geo-layer-card on" data-layer="coverage" style="color:#5ee0c8;" onclick="toggleMapLayer('coverage')">
+            <div class="glc-top">
+              <span class="glc-name"><span class="glc-sw" style="background:#5ee0c8;"></span>▦ COVERAGE</span>
+              <span class="glc-state">ON</span>
+            </div>
+            <div class="glc-desc">Area already scanned by the drone's flight path.</div>
+          </div>
+          <div class="geo-layer-card" data-layer="quake" style="color:#ff8a3c;" onclick="toggleMapLayer('quake')">
+            <div class="glc-top">
+              <span class="glc-name"><span class="glc-sw" style="background:#ff8a3c;"></span>🏚 EARTHQUAKE ZONES</span>
+              <span class="glc-state">OFF</span>
+            </div>
+            <div class="glc-desc">Structural collapse / unstable-building zones.</div>
+          </div>
+          <div class="geo-layer-card" data-layer="debris" style="color:#c98a3c;" onclick="toggleMapLayer('debris')">
+            <div class="glc-top">
+              <span class="glc-name"><span class="glc-sw" style="background:#c98a3c;"></span>🧱 DEBRIS / DAMAGE</span>
+              <span class="glc-state">OFF</span>
+            </div>
+            <div class="glc-desc">Debris fields blocking ground access routes.</div>
+          </div>
+          <div class="geo-layer-card" data-layer="flood" style="color:#3aa0ff;" onclick="toggleMapLayer('flood')">
+            <div class="glc-top">
+              <span class="glc-name"><span class="glc-sw" style="background:#3aa0ff;"></span>🌊 FLOOD INUNDATION</span>
+              <span class="glc-state">OFF</span>
+            </div>
+            <div class="glc-desc">Waterlogged / inundated no-go zones.</div>
+          </div>
+        </div>
+
+        <div class="geo-legend-row">
+          <div class="lg-row"><span class="sw dot" style="background:#ffb020;"></span>DRONE</div>
+          <div class="lg-row"><span class="sw dot" style="background:#5ee0c8;"></span>HOME</div>
+          <div class="lg-row"><span class="sw dot" style="background:#ff4d4d;"></span>VICTIM (HIGH PRIO)</div>
+          <div class="lg-row"><span class="sw dot" style="background:#e24b4a;"></span>HAZARD ZONE</div>
+          <div class="lg-row"><span class="sw" style="background:#5ee0c8; height:2px;"></span>SAFE ROUTE (AVOIDS HAZARDS)</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sys-section">
+      <div class="sys-section-head">4 · SYSTEM ARCHITECTURE FLOW</div>
+      <div class="sys-section-body">
+        <div class="arch-flow">
+          <div class="arch-node highlight"><span class="ic">🛸</span>DRONE<br>(EDGE SYSTEM)</div>
+          <div class="arch-arrow">→</div>
+          <div class="arch-node"><span class="ic">📡</span>TELEMETRY<br>LINK</div>
+          <div class="arch-arrow">→</div>
+          <div class="arch-node"><span class="ic">☁️</span>CLOUD<br>MICROSERVICES</div>
+          <div class="arch-arrow">→</div>
+          <div class="arch-node"><span class="ic">🔌</span>API<br>GATEWAY</div>
+          <div class="arch-arrow">→</div>
+          <div class="arch-node highlight"><span class="ic">🖥️</span>DASHBOARD &amp;<br>MOBILE APPS</div>
+        </div>
+        <div class="arch-return">↩ COMMANDS / CONFIGURATIONS / MISSION UPDATES flow back Dashboard → API Gateway → Cloud → Telemetry Link → Drone</div>
+      </div>
+    </div>
+
+    <div class="sys-section">
+      <div class="sys-section-head">5 · SUPPORT SERVICES — OPERATOR &amp; RESCUE TEAM</div>
+      <div class="sys-section-body">
+        <div class="support-grid">
+
+          <div class="supp-card">
+            <div class="supp-title"><span>🌦 WEATHER PREDICTION</span><span class="tag" id="weatherUpd">--:--</span></div>
+            <div class="weather-main">
+              <span class="wic" id="weatherIcon">⛅</span>
+              <span class="wtemp" id="weatherTemp">-- °C</span>
+            </div>
+            <div class="weather-sub">
+              <span id="weatherWind">Wind: -- km/h</span>
+              <span id="weatherRain">Rain probability: -- %</span>
+              <span id="weatherVis">Visibility: -- km</span>
+            </div>
+            <div class="weather-verdict" id="weatherVerdict">Awaiting forecast sync…</div>
+          </div>
+
+          <div class="supp-card">
+            <div class="supp-title"><span>☁ DATA BACKUP (CLOUD STORAGE)</span></div>
+            <div class="backup-ring">
+              <div class="backup-pct" id="backupPct">100%</div>
+              <div class="backup-detail">
+                <span id="backupState">All missions synced</span>
+                <span id="backupLast">Last backup: --:--:--</span>
+              </div>
+            </div>
+            <div class="backup-detail" style="margin-top:4px;">
+              <span id="backupSize">Storage used: 0 MB / local buffer</span>
+            </div>
+            <div class="backup-list" id="backupQueue">Queued for sync: 0 items</div>
+          </div>
+
+          <div class="supp-card">
+            <div class="supp-title"><span>📋 REPORTS &amp; LOGS</span></div>
+            <div class="report-stat-row"><span>Victims detected</span><span id="repVictims">0</span></div>
+            <div class="report-stat-row"><span>Hazards classified</span><span id="repHazards">0</span></div>
+            <div class="report-stat-row"><span>Notifications sent</span><span id="repNotifs">0</span></div>
+            <div class="report-stat-row"><span>Mission uptime</span><span id="repUptime">00:00:00</span></div>
+            <button class="export-btn" onclick="exportMissionReport()">⬇ EXPORT MISSION REPORT (.json)</button>
+          </div>
+
+          <div class="supp-card">
+            <div class="supp-title"><span>🔔 ALERTS &amp; NOTIFICATIONS</span><span class="tag" id="notifCount">0</span></div>
+            <div class="notif-list" id="notifList">
+              <div class="notif-empty">No notifications sent yet.<br>SMS / Email / App alerts will appear here.</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <h3>LINK GROUND STATION</h3>
+    <p>Point this dashboard at your Raspberry Pi. Leave blank and hit Simulate to demo without hardware.</p>
+    <label>WebSocket telemetry URL</label>
+    <input id="wsUrl" placeholder="ws://192.168.1.50:8765" />
+    <label>Video stream URL (MJPEG / HLS)</label>
+    <input id="videoUrl" placeholder="http://192.168.1.50:8080/stream.mjpg" />
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn" onclick="startSimulationNormal()">Simulate Demo</button>
+      <button class="btn primary" onclick="connectLive()">Connect</button>
+    </div>
+    <div class="hint">
+      Telemetry JSON: <code>{"type":"telemetry","battery":78,"altitude":42,"speed":5.2,"lat":22.57,"lng":88.36,"pitch":2,"roll":-1,"yaw":140,"signal":80}</code><br>
+      Detection JSON (fused): <code>{"type":"detection","lat":22.571,"lng":88.361,"sources":["cam","audio","lidar"],"confidence":0.91}</code><br>
+      Hazard JSON (edge-classified): <code>{"type":"hazard","lat":22.572,"lng":88.362,"hazardType":"fire","confidence":0.88}</code><br>
+      Audio JSON: <code>{"type":"audio","level":-38,"voiceDetected":true}</code><br>
+      Wi-Fi/BLE JSON: <code>{"type":"wifi","devices":[{"id":"BLE-4F2A","rssi":-62},{"id":"WiFi-9C11","rssi":-71}]}</code><br>
+      All detection, SLAM &amp; hazard classification run on-device (Jetson Orin Nano) — cloud sync is optional, used only for backup/multi-drone coordination.
+    </div>
+  </div>
+</div>
+
+<script>
+function tickClock(){
+  document.getElementById('clock').textContent = new Date().toLocaleTimeString('en-GB');
+}
+setInterval(tickClock, 1000); tickClock();
+
+function openModal(){ document.getElementById('modalOverlay').classList.remove('hidden'); }
+function closeModal(){ document.getElementById('modalOverlay').classList.add('hidden'); }
+
+let ws = null;
+let simInterval = null;
+
+function setConnected(label, isLive){
+  document.getElementById('connLabel').textContent = label;
+  document.getElementById('connPill').classList.toggle('connected', true);
+  document.getElementById('brandDot').classList.toggle('live', true);
+  document.getElementById('feedTag').textContent = isLive ? 'LIVE — PI' : 'SIMULATED';
+}
+
+function connectLive(){
+  const url = document.getElementById('wsUrl').value.trim();
+  const vurl = document.getElementById('videoUrl').value.trim();
+  if(!url){ alert('Enter a WebSocket URL, or use Simulate Demo instead.'); return; }
+  try{
+    if(ws) ws.close();
+    ws = new WebSocket(url);
+    ws.onopen = () => setConnected('LINKED — ' + url, true);
+    ws.onmessage = (ev) => {
+      try{
+        const msg = JSON.parse(ev.data);
+        if(msg.type === 'telemetry') applyTelemetry(msg);
+        if(msg.type === 'detection') addDetection(msg);
+        if(msg.type === 'hazard') addHazard(msg);
+        if(msg.type === 'audio') applyAudio(msg);
+        if(msg.type === 'wifi') applyWifi(msg);
+      }catch(e){ console.warn('bad message', e); }
+    };
+    ws.onerror = () => setConnected('CONNECTION ERROR', false);
+    ws.onclose = () => setConnected('DISCONNECTED', false);
+  }catch(e){
+    alert('Could not connect: ' + e.message);
+  }
+  if(vurl){
+    const videoEl = document.getElementById('videoImg');
+    videoEl.src = vurl;
+    videoEl.style.display = 'block';
+    document.getElementById('fallback').style.display = 'none';
+    if(videoEl.tagName === 'VIDEO') videoEl.play().catch(()=>{});
+  }
+  closeModal();
+}
+
+let forceLowBattery = false;
+let simBatteryLevel = 78;
+
+function startSimulationNormal(){
+  forceLowBattery = false;
+  startSimulation();
+}
+
+function simulateLowBattery(){
+  forceLowBattery = true;
+  simBatteryLevel = 31; // matches the field example: 31% battery, drone parked ~1.4km from home
+  if(!homePos && dronePos){
+    // push drone artificially away from home so the 1.4km example plays out
+  }
+  if(!simInterval){ startSimulation(); }
+}
+
+let ambientInterval = null;
+function startSimulation(){
+  if(simInterval) clearInterval(simInterval);
+  if(ambientInterval) clearInterval(ambientInterval);
+  setConnected('SIMULATION MODE', false);
+  if(!forceLowBattery) simBatteryLevel = 78;
+  simInterval = setInterval(() => {
+    simBatteryLevel = Math.max(3, simBatteryLevel - (forceLowBattery ? 0.35 : 0.03));
+    applyTelemetry({
+      battery: Math.round(simBatteryLevel),
+      altitude: (30 + Math.sin(Date.now()/3000)*8).toFixed(1),
+      speed: (4 + Math.random()*2).toFixed(1),
+      lat: 22.5726 + Math.sin(Date.now()/8000)*0.002,
+      lng: 88.3639 + Math.cos(Date.now()/8000)*0.002,
+      pitch: Math.sin(Date.now()/1000)*8,
+      roll: Math.cos(Date.now()/1200)*6,
+      yaw: (Date.now()/50)%360,
+      signal: 70 + Math.floor(Math.random()*20)
+    });
+  }, 800);
+
+  // Ambient acoustic + Wi-Fi/BLE scanning keeps ticking independently of confirmed detections,
+  // same as the real onboard mic + Wi-Fi/BLE scanner would run continuously in flight.
+  ambientInterval = setInterval(() => {
+    applyAudio({
+      level: -68 + Math.random()*14,
+      voiceDetected: false
+    });
+    if(Math.random() < 0.4){
+      applyWifi({devices: randomWifiDevices()});
+    }
+  }, 1500);
+
+  closeModal();
+}
+
+let dronePos = null;
+
+// ---------------- RTL / ENERGY MODEL ----------------
+// Tune these two to your real drone's numbers once you have flight-test data.
+const CONSUMPTION_PCT_PER_KM = 16.43;  // % battery burned per km of flight (16.43 -> 23% for 1.4km, matches field example)
+const RESERVE_PCT = 8;                 // safety margin that is never allowed to be touched
+const DEFAULT_SPEED_MPS = 5;           // used for time estimate if live speed is 0/unavailable
+
+let homePos = null;
+let homeMarker = null;
+let homeLine = null;
+
+function haversineKm(a, b){
+  const R = 6371;
+  const dLat = (b.lat - a.lat) * Math.PI/180;
+  const dLng = (b.lng - a.lng) * Math.PI/180;
+  const lat1 = a.lat * Math.PI/180, lat2 = b.lat * Math.PI/180;
+  const h = Math.sin(dLat/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLng/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+function ensureHome(lat, lng){
+  if(homePos) return;
+  homePos = {lat, lng};
+  homeMarker = L.marker([lat, lng], {icon: homeIcon}).addTo(map);
+}
+
+function setHomeHere(){
+  if(!dronePos){ alert('No drone position yet — connect or simulate first.'); return; }
+  homePos = {...dronePos};
+  if(homeMarker) map.removeLayer(homeMarker);
+  homeMarker = L.marker([homePos.lat, homePos.lng], {icon: homeIcon}).addTo(map);
+  updateEnergyCalc(lastBattery, lastSpeed);
+}
+
+function updateEnergyCalc(battery, speed){
+  const distLabel = document.getElementById('mapDistLabel');
+  const banner = document.getElementById('rtlBanner');
+  if(!homePos || !dronePos){
+    distLabel.textContent = 'HOME NOT SET';
+    distLabel.classList.remove('unsafe');
+    return;
+  }
+
+  const distKm = haversineKm(dronePos, homePos);
+  const spd = (speed && speed > 0) ? speed : DEFAULT_SPEED_MPS;
+  const timeMin = (distKm * 1000) / spd / 60;
+  const energyNeeded = distKm * CONSUMPTION_PCT_PER_KM;
+  const totalRequired = energyNeeded + RESERVE_PCT;
+  const unsafe = (battery !== undefined) && (battery <= totalRequired);
+
+  document.getElementById('distHomeV').textContent = distKm.toFixed(2) + ' km';
+  document.getElementById('energyNeedV').textContent = energyNeeded.toFixed(1) + ' %';
+  document.getElementById('timeHomeV').textContent = timeMin.toFixed(1) + ' min';
+
+  distLabel.textContent = 'HOME ' + distKm.toFixed(2) + ' km';
+  distLabel.classList.toggle('unsafe', unsafe);
+
+  if(homeLine) map.removeLayer(homeLine);
+  const routePts = computeSafeRoute(dronePos, homePos);
+  homeLine = L.polyline(routePts.map(p => [p.lat, p.lng]), {
+    color: unsafe ? '#ff4d4d' : '#5ee0c8', weight:2, dashArray: unsafe ? null : '5,6', opacity:0.8
+  }).addTo(map);
+
+  if(battery === undefined) return;
+
+  const routed = routePts.length > 2;
+  banner.className = 'energy-banner ' + (unsafe ? 'unsafe' : 'safe');
+  banner.innerHTML =
+    `REQUIRED TO RETURN: ${energyNeeded.toFixed(1)}% + ${RESERVE_PCT}% reserve = ${totalRequired.toFixed(1)}%<br>` +
+    `AVAILABLE: ${battery}%` +
+    (routed ? `<br>ROUTE BENDS AROUND ${hazards.length > 1 ? 'A HAZARD ZONE' : 'DETECTED HAZARD'} — path is no longer a straight line` : '') +
+    `<span class="verdict">${unsafe ? '⚠ INSUFFICIENT MARGIN — RETURN TO LAUNCH NOW' : '✓ MARGIN SAFE — MISSION MAY CONTINUE'}</span>`;
+}
+
+let lastBattery, lastSpeed;
+function applyTelemetry(d){
+  ensureHome(d.lat, d.lng);
+
+  lastBattery = d.battery;
+  lastSpeed = parseFloat(d.speed);
+
+  document.getElementById('battV').textContent = d.battery + ' %';
+  document.getElementById('battBar').style.width = d.battery + '%';
+  document.getElementById('battV').classList.toggle('warn', d.battery < 25);
+  document.getElementById('altV').textContent = d.altitude + ' m';
+  document.getElementById('spdV').textContent = d.speed + ' m/s';
+  document.getElementById('gpsTag').textContent = d.lat.toFixed(4) + ', ' + d.lng.toFixed(4);
+  document.getElementById('sigTag').textContent = 'SIG ' + d.signal + '%';
+  document.getElementById('pitchV').textContent = d.pitch.toFixed(1) + '°';
+  document.getElementById('rollV').textContent = d.roll.toFixed(1) + '°';
+  document.getElementById('yawV').textContent = d.yaw.toFixed(1) + '°';
+
+  setDroneAttitude(d.pitch, d.roll, d.yaw);
+  updateMapPosition(d.lat, d.lng);
+  updateEnergyCalc(d.battery, lastSpeed);
+}
+
+// ---------------- SENSOR FUSION HELPERS ----------------
+const SRC_META = {
+  cam:   {icon:'🎥', label:'CAM',   badgeClass:'cam'},
+  audio: {icon:'🔊', label:'AUDIO', badgeClass:'audio'},
+  wifi:  {icon:'📶', label:'WiFi/BLE', badgeClass:'wifi'},
+  lidar: {icon:'📡', label:'LiDAR', badgeClass:'cam'}
+};
+
+const CHIP_ID = {cam:'chipCam', audio:'chipAudio', wifi:'chipWifi', lidar:'chipLidar'};
+
+// ---------------- CLOUD SYNC / OFFLINE-RESILIENCE ----------------
+// All detection, SLAM and hazard classification happen on-device (Jetson Orin Nano).
+// This toggle only simulates loss of the optional cloud/backhaul link — local
+// processing (chips above, hazard log, victim log, safe-route calc) keeps running.
+let cloudSynced = true;
+function toggleCloudSync(){
+  cloudSynced = !cloudSynced;
+  const pill = document.getElementById('cloudPill');
+  const label = document.getElementById('cloudLabel');
+  const banner = document.getElementById('offlineBanner');
+  pill.classList.toggle('synced', cloudSynced);
+  pill.classList.toggle('offline', !cloudSynced);
+  label.textContent = cloudSynced ? 'CLOUD SYNCED' : 'OFFLINE — EDGE AI ACTIVE';
+  banner.classList.toggle('show', !cloudSynced);
+}
+// start in the "synced" visual state
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('cloudPill').classList.add('synced');
+});
+
+// ---------------- HAZARD CLASSIFICATION ----------------
+const HAZARD_META = {
+  fire:      {icon:'🔥', label:'FIRE',       color:'#ff4d4d'},
+  flood:     {icon:'🌊', label:'FLOOD',      color:'#3aa0ff'},
+  debris:    {icon:'🧱', label:'DEBRIS',     color:'#c98a3c'},
+  wire:      {icon:'⚡', label:'LIVE WIRE',  color:'#ffd23c'},
+  landslide: {icon:'⛰',  label:'LANDSLIDE',  color:'#8a6420'}
+};
+let hazards = [];
+let hazardCount = 0;
+
+function addHazard(d){
+  hazardCount++;
+  const meta = HAZARD_META[d.hazardType] || HAZARD_META.debris;
+  const conf = d.confidence ? Math.round(d.confidence*100) : (80 + Math.floor(Math.random()*15));
+
+  hazards.push({lat:d.lat, lng:d.lng, type:d.hazardType, id:hazardCount});
+  document.getElementById('hazardCountV').textContent = hazards.length + ' active';
+
+  const list = document.getElementById('hazardList');
+  const empty = list.querySelector('.hazard-empty');
+  if(empty) empty.remove();
+  const row = document.createElement('div');
+  row.className = 'hazard-row';
+  row.innerHTML = `
+    <span><span class="htype" style="color:${meta.color};">${meta.icon} ${meta.label}</span>
+    <span class="hmeta">&nbsp;${d.lat.toFixed(4)}, ${d.lng.toFixed(4)}</span></span>
+    <span class="hmeta">${conf}% • ${new Date().toLocaleTimeString('en-GB')}</span>
+  `;
+  list.prepend(row);
+
+  const icon = L.divIcon({
+    className:'',
+    html:`<div style="width:22px;height:22px;background:${meta.color}33;border:2px solid ${meta.color};border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:12px;">${meta.icon}</div>`,
+    iconSize:[22,22], iconAnchor:[11,11]
+  });
+  L.marker([d.lat, d.lng], {icon}).addTo(map);
+
+  updateEnergyCalc(lastBattery, lastSpeed); // recompute safe route around the new hazard
+  updateGeoMapStats();
+}
+
+function triggerDemoHazard(){
+  const base = dronePos || {lat:22.5726, lng:88.3639};
+  const types = Object.keys(HAZARD_META);
+  const hazardType = types[Math.floor(Math.random()*types.length)];
+  addHazard({
+    lat: base.lat + (Math.random()-0.5)*0.004,
+    lng: base.lng + (Math.random()-0.5)*0.004,
+    hazardType,
+    confidence: 0.75 + Math.random()*0.2
+  });
+}
+
+// Distance in km from point p to the line segment a-b (approx, small-area planar).
+function pointToSegmentKm(p, a, b){
+  const toXY = (pt, ref) => ({
+    x: (pt.lng - ref.lng) * 111.32 * Math.cos(ref.lat*Math.PI/180),
+    y: (pt.lat - ref.lat) * 110.57
+  });
+  const A = {x:0,y:0}, B = toXY(b,a), P = toXY(p,a);
+  const abLenSq = B.x*B.x + B.y*B.y;
+  let t = abLenSq === 0 ? 0 : (P.x*B.x + P.y*B.y) / abLenSq;
+  t = Math.max(0, Math.min(1, t));
+  const closest = {x:B.x*t, y:B.y*t};
+  return Math.sqrt((P.x-closest.x)**2 + (P.y-closest.y)**2);
+}
+
+// Builds a route from a -> b that detours around any hazard within HAZARD_BUFFER_KM
+// of the direct line, by inserting an offset waypoint near the closest hazard.
+const HAZARD_BUFFER_KM = 0.12;
+function computeSafeRoute(a, b){
+  if(hazards.length === 0) return [a, b];
+  let closest = null, closestDist = Infinity;
+  hazards.forEach(h => {
+    const d = pointToSegmentKm(h, a, b);
+    if(d < HAZARD_BUFFER_KM && d < closestDist){ closest = h; closestDist = d; }
+  });
+  if(!closest) return [a, b];
+  // perpendicular offset away from the hazard, roughly HAZARD_BUFFER_KM * 1.6 wide
+  const dLat = b.lat - a.lat, dLng = b.lng - a.lng;
+  const len = Math.sqrt(dLat*dLat + dLng*dLng) || 1;
+  const nx = -dLng/len, ny = dLat/len;
+  const midLat = (a.lat + b.lat)/2, midLng = (a.lng + b.lng)/2;
+  const toHazLat = closest.lat - midLat, toHazLng = closest.lng - midLng;
+  const side = (toHazLat*nx + toHazLng*ny) > 0 ? -1 : 1; // steer away from the hazard
+  const offsetDeg = 0.0016;
+  const waypoint = {lat: midLat + nx*offsetDeg*side, lng: midLng + ny*offsetDeg*side};
+  return [a, waypoint, b];
+}
+function pulseSensorChip(name){
+  const chip = document.getElementById(CHIP_ID[name] || 'chipCam');
+  if(!chip) return;
+  const stEl = chip.querySelector('.st');
+  chip.classList.add('active');
+  if(stEl) stEl.textContent = 'DETECT';
+  clearTimeout(chip._t);
+  chip._t = setTimeout(() => {
+    chip.classList.remove('active');
+    if(stEl) stEl.textContent = 'IDLE';
+  }, 2200);
+}
+
+function fusionPriority(confidence, sourceCount){
+  if(sourceCount >= 2 && confidence >= 0.75) return 'high';
+  if(sourceCount >= 2 || confidence >= 0.6) return 'med';
+  return 'low';
+}
+
+function applyAudio(d){
+  pulseSensorChip('audio');
+  const level = typeof d.level === 'number' ? d.level : -60; // dBFS-ish, higher(less negative) = louder
+  document.getElementById('audioLevelV').textContent = level.toFixed(0) + ' dB';
+  const meter = document.getElementById('audioMeter');
+  if(meter.children.length === 0){
+    for(let i=0;i<16;i++){
+      const seg = document.createElement('div');
+      seg.className = 'bar-seg';
+      meter.appendChild(seg);
+    }
+  }
+  const pct = Math.max(0, Math.min(1, (level + 70) / 40)); // map -70..-30 dB to 0..1
+  const activeSegs = Math.round(pct * 16);
+  [...meter.children].forEach((seg, i) => {
+    const on = i < activeSegs;
+    seg.style.height = on ? (20 + Math.random()*20) + '%' : '15%';
+    seg.classList.toggle('hot', on && i >= 10);
+    seg.classList.toggle('voice', on && d.voiceDetected && i >= 12);
+  });
+  const status = document.getElementById('audioStatus');
+  if(d.voiceDetected){
+    status.textContent = '⚠ HUMAN VOICE / CALL FOR HELP DETECTED';
+    status.classList.add('alert');
+  } else {
+    status.textContent = 'Ambient noise — no voice pattern matched.';
+    status.classList.remove('alert');
+  }
+}
+
+function applyWifi(d){
+  pulseSensorChip('wifi');
+  const devices = d.devices || [];
+  document.getElementById('wifiCountV').textContent = devices.length + ' device' + (devices.length===1?'':'s');
+  const list = document.getElementById('wifiList');
+  list.innerHTML = '';
+  if(devices.length === 0){
+    list.innerHTML = '<div class="wifi-empty">No nearby devices detected.</div>';
+    return;
+  }
+  devices.forEach(dev => {
+    const row = document.createElement('div');
+    row.className = 'wifi-row';
+    row.innerHTML = `<span>${dev.id}</span><span class="sig">${dev.rssi} dBm</span>`;
+    list.appendChild(row);
+  });
+}
+
+let victimCount = 0;
+function addDetection(d){
+  victimCount++;
+  document.getElementById('detCount').textContent = 'HUMANS DETECTED: ' + victimCount;
+
+  const sources = (d.sources && d.sources.length) ? d.sources : ['cam'];
+  sources.forEach(s => pulseSensorChip(s));
+
+  const conf = d.confidence ? Math.round(d.confidence*100) : (85 + Math.floor(Math.random()*12));
+  const priority = d.priority || fusionPriority(d.confidence || conf/100, sources.length);
+  const prioLabel = {high:'HIGH', med:'MED', low:'LOW'}[priority];
+
+  const list = document.getElementById('logList');
+  const empty = list.querySelector('.log-empty');
+  if(empty) empty.remove();
+
+  const row = document.createElement('div');
+  row.className = 'log-row';
+  const badges = sources.map(s => {
+    const m = SRC_META[s] || SRC_META.cam;
+    return `<span class="src-badge ${m.badgeClass}">${m.icon} ${m.label}</span>`;
+  }).join('');
+  row.innerHTML = `
+    <div class="log-row-top">
+      <span><span class="id">V${String(victimCount).padStart(2,'0')}</span> ${d.lat.toFixed(4)}, ${d.lng.toFixed(4)}<span class="prio-pill ${priority}">${prioLabel}</span></span>
+      <span class="meta">${conf}% • ${new Date().toLocaleTimeString('en-GB')}</span>
+    </div>
+    <div class="src-badges">${badges}</div>
+    <div class="fusion-line">FUSED FROM ${sources.length}/3 SENSORS — ${sources.map(s=>SRC_META[s].label).join(' + ')}</div>
+  `;
+  list.prepend(row);
+  addVictimMarker(d.lat, d.lng, victimCount, priority);
+  updateGeoMapStats();
+}
+
+function randomWifiDevices(){
+  const n = Math.random() < 0.6 ? (1 + Math.floor(Math.random()*3)) : 0;
+  return Array.from({length:n}, () => ({
+    id: (Math.random()<0.5?'BLE-':'WiFi-') + Math.random().toString(16).slice(2,6).toUpperCase(),
+    rssi: -1 * (45 + Math.floor(Math.random()*40))
+  }));
+}
+
+function triggerDemoDetection(){
+  const base = dronePos || {lat:22.5726, lng:88.3639};
+
+  // Pick a realistic combination of contributing sensors — camera is not always primary
+  const pool = [
+    ['cam'], ['cam','audio'], ['audio'], ['audio','wifi'],
+    ['cam','audio','wifi'], ['cam','wifi'], ['wifi'],
+    ['cam','lidar'], ['lidar','audio'], ['cam','lidar','audio']
+  ];
+  const sources = pool[Math.floor(Math.random()*pool.length)];
+
+  // Confidence scales with how many independent sensors agree
+  const base_conf = 0.55 + sources.length * 0.12 + Math.random()*0.1;
+  const confidence = Math.min(0.98, base_conf);
+  const priority = fusionPriority(confidence, sources.length);
+
+  // Drive the live sensor panels so they match what's being logged
+  if(sources.includes('audio')){
+    applyAudio({level: -34 - Math.random()*6, voiceDetected:true});
+  }
+  if(sources.includes('wifi')){
+    const devices = randomWifiDevices();
+    applyWifi({devices: devices.length ? devices : [{id:'BLE-'+Math.random().toString(16).slice(2,6).toUpperCase(), rssi:-58}]});
+  }
+  if(sources.includes('cam')){
+    pulseSensorChip('cam');
+  }
+
+  addDetection({
+    lat: base.lat + (Math.random()-0.5)*0.003,
+    lng: base.lng + (Math.random()-0.5)*0.003,
+    confidence,
+    sources,
+    priority
+  });
+}
+
+const map = L.map('map', {zoomControl:false, attributionControl:false}).setView([22.5726, 88.3639], 15);
+
+// Map tiles: avoid the tile endpoint that was returning HTTP 403.
+// Use a public Esri street-map layer and fall back to Carto if it errors.
+let activeTileLayer = null;
+let mapFallbackUsed = false;
+const primaryTiles = L.tileLayer(
+  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+  {maxZoom:19, crossOrigin:true}
+);
+const fallbackTiles = L.tileLayer(
+  'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+  {maxZoom:20, subdomains:'abcd', crossOrigin:true}
+);
+function useTileLayer(layer){
+  if(activeTileLayer) map.removeLayer(activeTileLayer);
+  activeTileLayer = layer;
+  layer.addTo(map);
+}
+primaryTiles.on('tileerror', function(){
+  if(!mapFallbackUsed){
+    mapFallbackUsed = true;
+    useTileLayer(fallbackTiles);
+  }
+});
+useTileLayer(primaryTiles);
+L.control.zoom({position:'bottomright'}).addTo(map);
+
+const droneIcon = L.divIcon({
+  className:'',
+  html:'<div style="width:16px;height:16px;background:#ffb020;border:2px solid #0a0f0d;border-radius:50%;box-shadow:0 0 10px #ffb020;"></div>',
+  iconSize:[16,16], iconAnchor:[8,8]
+});
+const homeIcon = L.divIcon({
+  className:'',
+  html:'<div style="width:20px;height:20px;display:flex;align-items:center;justify-content:center;background:#5ee0c8;border:2px solid #0a0f0d;border-radius:4px;color:#0a0f0d;font-family:monospace;font-size:11px;font-weight:700;box-shadow:0 0 8px rgba(94,224,200,0.6);">H</div>',
+  iconSize:[20,20], iconAnchor:[10,10]
+});
+let droneMarker = L.marker([22.5726, 88.3639], {icon: droneIcon}).addTo(map);
+let dronePath = L.polyline([], {color:'#5ee0c8', weight:1.5, opacity:0.6}).addTo(map);
+
+function updateMapPosition(lat, lng){
+  dronePos = {lat, lng};
+  droneMarker.setLatLng([lat, lng]);
+  dronePath.addLatLng([lat, lng]);
+  map.panTo([lat, lng], {animate:true});
+}
+
+const PRIO_COLOR = {high:'#ff4d4d', med:'#ffb020', low:'#5ee0c8'};
+function addVictimMarker(lat, lng, id, priority){
+  const color = PRIO_COLOR[priority] || PRIO_COLOR.high;
+  const icon = L.divIcon({
+    className:'',
+    html:`<div style="width:20px;height:20px;background:${color}26;border:2px solid ${color};border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:monospace;font-size:9px;color:${color};font-weight:700;">${id}</div>`,
+    iconSize:[20,20], iconAnchor:[10,10]
+  });
+  L.marker([lat, lng], {icon}).addTo(map);
+}
+
+const container = document.getElementById('three-canvas');
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
+
+const renderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+container.appendChild(renderer.domElement);
+
+// Model's rough bounding radius used to auto-frame the camera. We frame tightly around the
+// drone body itself (not the full decorative rings) so the drone reads big — the outer rings
+// are allowed to bleed past the edges a little, which reads as an intentional HUD/radar crop.
+const MODEL_RADIUS = 1.55;
+
+function frameCamera(){
+  const w = container.clientWidth || 300;
+  const h = container.clientHeight || 300;
+  if(w < 2 || h < 2) return; // panel not laid out yet, retry later
+  const aspect = w / h;
+  camera.aspect = aspect;
+
+  // Distance needed so MODEL_RADIUS fits inside both the vertical AND horizontal frustum.
+  const vFov = THREE.MathUtils.degToRad(camera.fov);
+  const distForHeight = MODEL_RADIUS / Math.sin(vFov / 2);
+  const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
+  const distForWidth = MODEL_RADIUS / Math.sin(hFov / 2);
+  const dist = Math.max(distForHeight, distForWidth) * 1.04; // tight crop so the drone reads big
+
+  // Slightly elevated 3/4 hero angle so top, front and landing legs are all visible.
+  camera.position.set(dist * 0.34, dist * 0.4, dist * 0.86);
+  camera.lookAt(0, -0.15, 0);
+  camera.updateProjectionMatrix();
+
+  renderer.setSize(w, h, false);
+}
+
+frameCamera();
+// Panel sizing can settle a beat after first paint (fonts/layout) — recheck a few times early on.
+requestAnimationFrame(frameCamera);
+setTimeout(frameCamera, 120);
+setTimeout(frameCamera, 500);
+if(window.ResizeObserver){
+  new ResizeObserver(() => frameCamera()).observe(container);
+}
+
+scene.add(new THREE.HemisphereLight(0x5ee0c8, 0x0a0f0d, 0.55));
+const key = new THREE.DirectionalLight(0xffb020, 1.1);
+key.position.set(3,4,2);
+scene.add(key);
+const rim = new THREE.DirectionalLight(0x5ee0c8, 0.7);
+rim.position.set(-3,-1.5,-2.5);
+scene.add(rim);
+const fill = new THREE.PointLight(0xffb020, 0.4, 8);
+fill.position.set(0,-1,1.5);
+scene.add(fill);
+
+// attitude-indicator rings with tick marks
+for(let i=0;i<3;i++){
+  const ringGeo = new THREE.TorusGeometry(1.1 + i*0.28, 0.005, 8, 80);
+  const ringMat = new THREE.MeshBasicMaterial({color: i===1 ? 0x8a6420 : 0x26362f, transparent:true, opacity:0.55});
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.rotation.x = Math.PI/2;
+  scene.add(ring);
+}
+const tickGroup = new THREE.Group();
+for(let a=0; a<360; a+=30){
+  const rad = a * Math.PI/180;
+  const r1 = 1.72, r2 = 1.8;
+  const geo = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(Math.cos(rad)*r1, 0, Math.sin(rad)*r1),
+    new THREE.Vector3(Math.cos(rad)*r2, 0, Math.sin(rad)*r2)
+  ]);
+  tickGroup.add(new THREE.Line(geo, new THREE.LineBasicMaterial({color:0x5ee0c8, transparent:true, opacity:0.4})));
+}
+scene.add(tickGroup);
+
+// soft ground glow disc
+const glowGeo = new THREE.CircleGeometry(1.9, 48);
+const glowMat = new THREE.MeshBasicMaterial({color:0xffb020, transparent:true, opacity:0.04});
+const glow = new THREE.Mesh(glowGeo, glowMat);
+glow.rotation.x = -Math.PI/2;
+glow.position.y = -0.55;
+scene.add(glow);
+
+// radar-style sweep — a soft fading wedge that continuously spins under the drone,
+// giving the panel a constant sense of "scanning" motion even when telemetry is idle.
+const sweepGeo = new THREE.RingGeometry(0.2, 1.78, 48, 1, 0, Math.PI/2.3);
+const sweepMat = new THREE.MeshBasicMaterial({
+  color:0x5ee0c8, transparent:true, opacity:0.10, side:THREE.DoubleSide, depthWrite:false
+});
+const sweep = new THREE.Mesh(sweepGeo, sweepMat);
+sweep.rotation.x = -Math.PI/2;
+sweep.position.y = -0.001;
+scene.add(sweep);
+
+// small orbiting blips on the outer ring — tracked-object feel, each at its own speed/radius
+const blips = [];
+[
+  {r:1.66, speed:0.55, y:0.01, size:0.028, color:0xffb020},
+  {r:1.4,  speed:-0.8, y:0.015, size:0.02, color:0x5ee0c8},
+  {r:1.78, speed:0.32, y:0.005, size:0.022, color:0xff4d4d}
+].forEach(cfg => {
+  const blip = new THREE.Mesh(
+    new THREE.SphereGeometry(cfg.size, 10, 10),
+    new THREE.MeshBasicMaterial({color:cfg.color, transparent:true, opacity:0.85})
+  );
+  blip.userData = {r: cfg.r, speed: cfg.speed, y: cfg.y, angle: Math.random()*Math.PI*2};
+  scene.add(blip);
+  blips.push(blip);
+});
+
+// ============ DRONE MODEL ============
+const drone = new THREE.Group();
+
+const hullMat = new THREE.MeshStandardMaterial({color:0x1a2620, metalness:0.55, roughness:0.35});
+const hullDarkMat = new THREE.MeshStandardMaterial({color:0x0d1512, metalness:0.6, roughness:0.3});
+const accentMat = new THREE.MeshStandardMaterial({color:0xffb020, metalness:0.4, roughness:0.3, emissive:0xffb020, emissiveIntensity:0.35});
+const cyanMat = new THREE.MeshStandardMaterial({color:0x5ee0c8, metalness:0.3, roughness:0.35, emissive:0x5ee0c8, emissiveIntensity:0.25});
+const propDiscMat = new THREE.MeshBasicMaterial({color:0x5ee0c8, transparent:true, opacity:0.16, side:THREE.DoubleSide});
+const bladeMat = new THREE.MeshStandardMaterial({color:0x0d1512, metalness:0.3, roughness:0.5});
+
+// central hull: streamlined hexagonal body
+const hullShape = new THREE.CylinderGeometry(0.32, 0.4, 0.16, 6);
+const hull = new THREE.Mesh(hullShape, hullMat);
+drone.add(hull);
+const hullTop = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.32, 0.1, 6), hullDarkMat);
+hullTop.position.y = 0.12;
+drone.add(hullTop);
+// status LED strip
+const led = new THREE.Mesh(new THREE.TorusGeometry(0.33, 0.008, 6, 24), accentMat);
+led.rotation.x = Math.PI/2;
+led.position.y = 0.005;
+drone.add(led);
+
+const armPositions = [[0.75,0,0.75],[-0.75,0,0.75],[0.75,0,-0.75],[-0.75,0,-0.75]];
+armPositions.forEach(([x,y,z]) => {
+  const armLen = Math.sqrt(x*x+z*z);
+  const ang = Math.atan2(z,x);
+
+  // tapered arm
+  const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.045,armLen*1.15,8), hullDarkMat);
+  arm.rotation.z = Math.PI/2;
+  arm.rotation.y = ang;
+  arm.position.set(x*0.48, -0.01, z*0.48);
+  drone.add(arm);
+
+  // motor bell
+  const motorBase = new THREE.Mesh(new THREE.CylinderGeometry(0.065,0.075,0.05,12), hullDarkMat);
+  motorBase.position.set(x,0.02,z);
+  drone.add(motorBase);
+  const motorBell = new THREE.Mesh(new THREE.CylinderGeometry(0.09,0.09,0.07,12), cyanMat);
+  motorBell.position.set(x,0.07,z);
+  drone.add(motorBell);
+
+  // prop: blurred disc + two thin blades for detail
+  const propGroup = new THREE.Group();
+  propGroup.position.set(x,0.12,z);
+  const disc = new THREE.Mesh(new THREE.CircleGeometry(0.34,32), propDiscMat);
+  disc.rotation.x = Math.PI/2;
+  propGroup.add(disc);
+  for(let b=0;b<2;b++){
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.6,0.006,0.045), bladeMat);
+    blade.rotation.y = b * Math.PI/2;
+    propGroup.add(blade);
+  }
+  propGroup.userData.spin = true;
+  drone.add(propGroup);
+
+  // landing skid leg
+  const legGeo = new THREE.CylinderGeometry(0.012,0.012,0.32,6);
+  const leg = new THREE.Mesh(legGeo, hullDarkMat);
+  leg.position.set(x*0.62,-0.24,z*0.62);
+  leg.rotation.z = (x>0?1:-1)*0.18;
+  leg.rotation.x = (z>0?1:-1)*0.18;
+  drone.add(leg);
+});
+// landing skid feet (front-back bars)
+[0.62,-0.62].forEach(zSide => {
+  const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.014,0.014,1.15,6), hullDarkMat);
+  bar.rotation.z = Math.PI/2;
+  bar.position.set(0,-0.4,zSide*0.9);
+  drone.add(bar);
+});
+
+// gimbal + camera pod (front, angled slightly down)
+const gimbalArm = new THREE.Mesh(new THREE.CylinderGeometry(0.015,0.015,0.12,6), hullDarkMat);
+gimbalArm.position.set(0,-0.14,0.28);
+drone.add(gimbalArm);
+const camPod = new THREE.Mesh(new THREE.SphereGeometry(0.11,16,16), hullMat);
+camPod.position.set(0,-0.22,0.3);
+drone.add(camPod);
+const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.055,0.055,0.04,16), new THREE.MeshStandardMaterial({color:0x0a0f0d, metalness:0.9, roughness:0.1, emissive:0x5ee0c8, emissiveIntensity:0.4}));
+lens.rotation.x = Math.PI/2 + 0.35;
+lens.position.set(0,-0.24,0.36);
+drone.add(lens);
+
+drone.position.y = 0.15;
+drone.scale.set(1.2, 1.2, 1.2);
+scene.add(drone);
+
+let targetPitch=0, targetRoll=0, targetYaw=0;
+let curPitch=0, curRoll=0, curYaw=0;
+
+function setDroneAttitude(pitch, roll, yaw){
+  targetPitch = THREE.MathUtils.degToRad(pitch);
+  targetRoll = THREE.MathUtils.degToRad(roll);
+  targetYaw = THREE.MathUtils.degToRad(yaw);
+}
+
+let animT = 0;
+function animate(){
+  requestAnimationFrame(animate);
+  animT += 0.016;
+  curPitch += (targetPitch - curPitch) * 0.08;
+  curRoll += (targetRoll - curRoll) * 0.08;
+  curYaw += (targetYaw - curYaw) * 0.05;
+  drone.rotation.x = curPitch;
+  drone.rotation.z = curRoll;
+  drone.rotation.y = curYaw;
+  drone.position.y = 0.15 + Math.sin(animT*1.6)*0.03 ; // gentle hover bob
+  drone.position.x = Math.sin(animT*0.7)*0.015; // tiny hover drift for a more alive feel
+  drone.children.forEach(c => { if(c.userData.spin) c.rotation.y += 1.4; });
+
+  // radar sweep spin — always active so the panel never looks static
+  sweep.rotation.y -= 0.018;
+
+  // orbiting blips
+  blips.forEach(b => {
+    b.userData.angle += b.userData.speed * 0.016;
+    b.position.set(
+      Math.cos(b.userData.angle) * b.userData.r,
+      b.userData.y,
+      Math.sin(b.userData.angle) * b.userData.r
+    );
+  });
+
+  renderer.render(scene, camera);
+}
+animate();
+
+window.addEventListener('resize', frameCamera);
+
+let idleT = 0;
+setInterval(() => {
+  idleT += 0.05;
+  if(!ws && !simInterval){
+    setDroneAttitude(Math.sin(idleT)*4, Math.cos(idleT*0.7)*3, idleT*10);
+  }
+}, 100);
+</script>
+
+<script>
+/* =========================================================================
+   PART 2 EXTENSIONS — Telemetry Link, Cloud Microservices, API Gateway,
+   Weather, Data Backup, Reports & Logs, Alerts/Notifications, Map disaster
+   layers, and a SLAM point-cloud view for the 3D panel.
+   ========================================================================= */
+
+// ---------------- TAB SWITCHING ----------------
+let unreadNotifs = 0;
+function switchView(view){
+  document.getElementById('liveOpsView').style.display = view === 'live' ? 'grid' : 'none';
+  document.getElementById('systemView').style.display = view === 'system' ? 'block' : 'none';
+  document.getElementById('tabBtnLive').classList.toggle('active', view === 'live');
+  document.getElementById('tabBtnSystem').classList.toggle('active', view === 'system');
+  if(view === 'system'){
+    unreadNotifs = 0;
+    document.getElementById('notifBadge').style.display = 'none';
+  }
+}
+
+// ---------------- CLOUD MICROSERVICES ----------------
+const MICROSERVICES = [
+  {id:'storage', icon:'🗄️', name:'Data Storage Service'},
+  {id:'ai',      icon:'🧠', name:'AI Analysis Service'},
+  {id:'path',    icon:'🧭', name:'Path Planning Service'},
+  {id:'weather', icon:'🌦️', name:'Weather Prediction Service'},
+  {id:'hazard',  icon:'⚠️', name:'Hazard Intelligence Service'},
+  {id:'notify',  icon:'🔔', name:'Notification & Alert Service'}
+];
+function renderMicroservices(){
+  document.getElementById('msGrid').innerHTML = MICROSERVICES.map(m => `
+    <div class="ms-card" id="ms-${m.id}">
+      <span class="ic">${m.icon}</span>
+      <span class="nm">${m.name}</span>
+      <span class="stat-row"><span class="sdot"></span><span class="stat-txt">--</span></span>
+      <span class="lat">-- ms</span>
+    </div>`).join('');
+}
+function tickMicroservices(){
+  MICROSERVICES.forEach(m => {
+    const card = document.getElementById('ms-'+m.id);
+    if(!card) return;
+    const txt = card.querySelector('.stat-txt');
+    const lat = card.querySelector('.lat');
+    const localFallback = (m.id === 'ai' || m.id === 'hazard'); // these keep running on-device
+    if(cloudSynced){
+      card.classList.add('online');
+      txt.textContent = 'ONLINE';
+      lat.textContent = (20 + Math.floor(Math.random()*60)) + ' ms';
+    } else if(localFallback){
+      card.classList.add('online');
+      txt.textContent = 'EDGE-ONLY';
+      lat.textContent = 'on-device';
+    } else {
+      card.classList.remove('online');
+      txt.textContent = 'UNREACHABLE';
+      lat.textContent = '--';
+    }
+  });
+}
+renderMicroservices();
+tickMicroservices();
+setInterval(tickMicroservices, 3000);
+
+// ---------------- WEATHER PREDICTION ----------------
+function tickWeather(){
+  const temp = (24 + Math.sin(Date.now()/60000)*4 + Math.random()*1.5).toFixed(1);
+  const wind = Math.round(8 + Math.random()*14);
+  const rain = Math.max(0, Math.min(100, Math.round(20 + Math.sin(Date.now()/45000)*25 + Math.random()*10)));
+  const vis  = rain > 60 ? (2 + Math.random()*2).toFixed(1) : (7 + Math.random()*3).toFixed(1);
+  const icon = rain > 65 ? '⛈️' : rain > 40 ? '🌧️' : rain > 20 ? '🌦️' : '⛅';
+  document.getElementById('weatherIcon').textContent = icon;
+  document.getElementById('weatherTemp').textContent = temp + ' °C';
+  document.getElementById('weatherWind').textContent = 'Wind: ' + wind + ' km/h';
+  document.getElementById('weatherRain').textContent = 'Rain probability: ' + rain + '%';
+  document.getElementById('weatherVis').textContent = 'Visibility: ' + vis + ' km';
+  document.getElementById('weatherUpd').textContent = new Date().toLocaleTimeString('en-GB');
+  const verdict = document.getElementById('weatherVerdict');
+  const unsafe = wind > 18 || rain > 65;
+  verdict.classList.toggle('bad', unsafe);
+  verdict.textContent = unsafe
+    ? '⚠ Marginal conditions — high wind/rain may affect flight stability.'
+    : '✓ Conditions within safe flight envelope.';
+}
+tickWeather();
+setInterval(tickWeather, 8000);
+
+// ---------------- ALERTS & NOTIFICATIONS ----------------
+let notifications = [];
+const NOTIF_CHANNELS = {
+  sms:   {label:'SMS',   color:'#ff8f8f'},
+  email: {label:'EMAIL', color:'#5ee0c8'},
+  app:   {label:'APP',   color:'#ffb020'}
+};
+function pushNotification(channel, text){
+  notifications.unshift({channel, text, time: new Date().toLocaleTimeString('en-GB')});
+  notifications = notifications.slice(0, 30);
+  renderNotifications();
+  unreadNotifs++;
+  const badge = document.getElementById('notifBadge');
+  if(document.getElementById('systemView').style.display === 'none' || document.getElementById('systemView').style.display === ''){
+    badge.style.display = 'inline-flex';
+    badge.textContent = unreadNotifs > 9 ? '9+' : unreadNotifs;
+  }
+}
+function renderNotifications(){
+  document.getElementById('notifCount').textContent = notifications.length;
+  const list = document.getElementById('notifList');
+  if(notifications.length === 0){
+    list.innerHTML = '<div class="notif-empty">No notifications sent yet.<br>SMS / Email / App alerts will appear here.</div>';
+    return;
+  }
+  list.innerHTML = notifications.map(n => {
+    const meta = NOTIF_CHANNELS[n.channel] || NOTIF_CHANNELS.app;
+    return `<div class="notif-row"><span class="ch" style="color:${meta.color};border-color:${meta.color}55;">${meta.label}</span><span>${n.text} <span style="color:var(--text-2);">· ${n.time}</span></span></div>`;
+  }).join('');
+}
+
+// ---------------- DATA BACKUP (CLOUD STORAGE) ----------------
+function updateBackupPanel(){
+  const totalItems = victimCount + hazardCount;
+  const pctEl = document.getElementById('backupPct');
+  const stateEl = document.getElementById('backupState');
+  const lastEl = document.getElementById('backupLast');
+  const sizeEl = document.getElementById('backupSize');
+  const queueEl = document.getElementById('backupQueue');
+  if(cloudSynced){
+    pctEl.textContent = '100%'; pctEl.style.color = 'var(--cyan)';
+    stateEl.textContent = 'All missions synced to cloud';
+    lastEl.textContent = 'Last backup: ' + new Date().toLocaleTimeString('en-GB');
+    sizeEl.textContent = 'Storage used: ' + (totalItems*4.2).toFixed(1) + ' MB (cloud)';
+    queueEl.textContent = 'Queued for sync: 0 items';
+  } else {
+    pctEl.textContent = '⏸'; pctEl.style.color = 'var(--amber)';
+    stateEl.textContent = 'Offline — buffering locally on Jetson';
+    lastEl.textContent = 'Last backup: before link loss';
+    sizeEl.textContent = 'Storage used: ' + (totalItems*4.2).toFixed(1) + ' MB (local NVMe)';
+    queueEl.textContent = 'Queued for sync: ' + totalItems + ' item' + (totalItems===1?'':'s');
+  }
+}
+updateBackupPanel();
+setInterval(updateBackupPanel, 4000);
+
+// ---------------- REPORTS & LOGS ----------------
+const missionStartTime = Date.now();
+function updateReportStats(){
+  document.getElementById('repVictims').textContent = victimCount;
+  document.getElementById('repHazards').textContent = hazardCount;
+  document.getElementById('repNotifs').textContent = notifications.length;
+  const elapsed = Math.floor((Date.now()-missionStartTime)/1000);
+  const hh = String(Math.floor(elapsed/3600)).padStart(2,'0');
+  const mm = String(Math.floor((elapsed%3600)/60)).padStart(2,'0');
+  const ss = String(elapsed%60).padStart(2,'0');
+  document.getElementById('repUptime').textContent = `${hh}:${mm}:${ss}`;
+}
+setInterval(updateReportStats, 1000);
+updateReportStats();
+
+function exportMissionReport(){
+  const report = {
+    generatedAt: new Date().toISOString(),
+    missionUptimeSeconds: Math.floor((Date.now()-missionStartTime)/1000),
+    victimsDetected: victimCount,
+    hazardsClassified: hazardCount,
+    hazards: hazards,
+    notifications: notifications,
+    cloudSynced: cloudSynced
+  };
+  const blob = new Blob([JSON.stringify(report, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'SAR1_mission_report_' + Date.now() + '.json';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ---------------- HOOK EXISTING FUNCTIONS FOR NOTIFICATIONS/REPORTS ----------------
+const _origToggleCloudSync = toggleCloudSync;
+toggleCloudSync = function(){
+  _origToggleCloudSync();
+  tickMicroservices();
+  updateBackupPanel();
+  pushNotification('app', cloudSynced ? 'Cloud link restored — sync resumed.' : 'Cloud link lost — switching to edge-only buffering.');
+};
+
+const _origAddDetection = addDetection;
+addDetection = function(d){
+  _origAddDetection(d);
+  pushNotification('app', `New detection V${String(victimCount).padStart(2,'0')} logged — GPS ${d.lat.toFixed(4)}, ${d.lng.toFixed(4)}.`);
+  updateReportStats();
+  updateBackupPanel();
+};
+
+const _origAddHazard = addHazard;
+addHazard = function(d){
+  _origAddHazard(d);
+  const label = (HAZARD_META[d.hazardType] || HAZARD_META.debris).label;
+  pushNotification('sms', `⚠ Hazard alert: ${label} zone detected — safe route recalculated.`);
+  updateReportStats();
+  updateBackupPanel();
+};
+
+let _lastRtlUnsafe = false;
+const _origUpdateEnergyCalc = updateEnergyCalc;
+updateEnergyCalc = function(battery, speed){
+  _origUpdateEnergyCalc(battery, speed);
+  if(!homePos || !dronePos || battery === undefined) return;
+  const distKm = haversineKm(dronePos, homePos);
+  const energyNeeded = distKm * CONSUMPTION_PCT_PER_KM;
+  const unsafe = battery <= (energyNeeded + RESERVE_PCT);
+  if(unsafe && !_lastRtlUnsafe){
+    pushNotification('sms', `⚠ LOW BATTERY MARGIN (${battery}%) — return-to-launch required now.`);
+  }
+  _lastRtlUnsafe = unsafe;
+};
+
+// ---------------- MAP DISASTER LAYERS ----------------
+let mapLayers = {};
+function initDisasterLayers(){
+  const c = {lat:22.5726, lng:88.3639};
+  mapLayers.quake = L.layerGroup([
+    L.circle([c.lat+0.003, c.lng+0.004], {radius:180, color:'#ff8a3c', fillColor:'#ff8a3c', fillOpacity:0.18, weight:1.5}),
+    L.circle([c.lat-0.002, c.lng+0.006], {radius:120, color:'#ff8a3c', fillColor:'#ff8a3c', fillOpacity:0.18, weight:1.5})
+  ]);
+  mapLayers.debris = L.layerGroup([
+    L.circle([c.lat+0.0015, c.lng-0.003], {radius:90, color:'#c98a3c', fillColor:'#c98a3c', fillOpacity:0.22, weight:1.5}),
+    L.circle([c.lat-0.003, c.lng-0.001], {radius:70, color:'#c98a3c', fillColor:'#c98a3c', fillOpacity:0.22, weight:1.5})
+  ]);
+  mapLayers.flood = L.layerGroup([
+    L.circle([c.lat-0.004, c.lng-0.005], {radius:220, color:'#3aa0ff', fillColor:'#3aa0ff', fillOpacity:0.16, weight:1.5})
+  ]);
+  mapLayers.coverage = L.layerGroup([
+    L.circle([c.lat, c.lng], {radius:450, color:'#5ee0c8', fillColor:'#5ee0c8', fillOpacity:0.05, weight:1, dashArray:'4,5'})
+  ]);
+  mapLayers.coverage.addTo(map); // matches the chip that starts "on"
+}
+function toggleMapLayer(name){
+  const layer = mapLayers[name];
+  if(!layer) return;
+  const turningOn = !map.hasLayer(layer);
+  if(turningOn){ layer.addTo(map); } else { map.removeLayer(layer); }
+
+  // keep the map's own chip row AND the Geo-Tagged Mapping section (System & Cloud tab) in sync
+  document.querySelectorAll(`.layer-chip[data-layer="${name}"]`).forEach(chip => {
+    chip.classList.toggle('on', turningOn);
+  });
+  document.querySelectorAll(`.geo-layer-card[data-layer="${name}"]`).forEach(card => {
+    card.classList.toggle('on', turningOn);
+    const state = card.querySelector('.glc-state');
+    if(state) state.textContent = turningOn ? 'ON' : 'OFF';
+  });
+  updateGeoLayerStat();
+}
+function updateGeoLayerStat(){
+  const total = Object.keys(mapLayers).length;
+  const active = Object.keys(mapLayers).filter(k => map.hasLayer(mapLayers[k])).length;
+  const el = document.getElementById('geoLayersActiveV');
+  if(el) el.textContent = `${active} / ${total}`;
+}
+function updateGeoMapStats(){
+  const v = document.getElementById('geoVictimStatV');
+  const h = document.getElementById('geoHazardStatV');
+  const s = document.getElementById('geoLastSyncV');
+  if(v) v.textContent = victimCount;
+  if(h) h.textContent = hazards.length;
+  if(s) s.textContent = new Date().toLocaleTimeString('en-GB');
+}
+initDisasterLayers();
+updateGeoLayerStat();
+
+// ---------------- 3D PANEL: ATTITUDE vs SLAM POINT-CLOUD ----------------
+let slamPoints = null;
+function buildSlamPointCloud(){
+  const count = 900;
+  const positions = new Float32Array(count*3);
+  for(let i=0;i<count;i++){
+    const angle = Math.random()*Math.PI*2;
+    const r = 1.1 + Math.random()*0.65 + Math.sin(angle*3)*0.15;
+    positions[i*3]   = Math.cos(angle)*r;
+    positions[i*3+1] = (Math.random()-0.5)*0.45;
+    positions[i*3+2] = Math.sin(angle)*r;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  const mat = new THREE.PointsMaterial({color:0x5ee0c8, size:0.028, transparent:true, opacity:0.85});
+  slamPoints = new THREE.Points(geo, mat);
+  slamPoints.visible = false;
+  scene.add(slamPoints);
+}
+buildSlamPointCloud();
+
+function set3DView(mode){
+  document.getElementById('btnViewAttitude').classList.toggle('on', mode === 'attitude');
+  document.getElementById('btnViewSlam').classList.toggle('on', mode === 'slam');
+  document.getElementById('tele3dLabel').textContent = mode === 'slam' ? 'SLAM · LiDAR POINT CLOUD' : 'ATTITUDE / IMU';
+  slamPoints.visible = (mode === 'slam');
+  sweep.visible = (mode === 'attitude');
+  blips.forEach(b => b.visible = (mode === 'attitude'));
+}
+(function animateSlam(){
+  requestAnimationFrame(animateSlam);
+  if(slamPoints && slamPoints.visible) slamPoints.rotation.y += 0.0022;
+})();
+</script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+  const cam = document.getElementById('videoImg');
+  const fallback = document.getElementById('fallback');
+  const feedTag = document.getElementById('feedTag');
+  if(cam && cam.tagName === 'VIDEO'){
+    cam.muted = true;
+    cam.autoplay = true;
+    cam.loop = true;
+    cam.playsInline = true;
+    cam.addEventListener('loadeddata', function(){
+      cam.style.display = 'block';
+      if(fallback) fallback.style.display = 'none';
+      if(feedTag) feedTag.textContent = 'CAM 01 · LOCAL VIDEO';
+      cam.play().catch(()=>{});
+    });
+    cam.addEventListener('error', function(){
+      if(fallback) fallback.style.display = 'flex';
+      if(feedTag) feedTag.textContent = 'CAM 01 · VIDEO ERROR';
+    });
+    cam.play().catch(()=>{});
+  }
+});
+</script>
+</body>
+</html>
